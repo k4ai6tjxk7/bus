@@ -85,12 +85,16 @@
     for(let k=0;k<a.length;k+=3) a[k+1]=-0.6+Math.sin(a[k]*.25+t*1.2)*.18+Math.cos(a[k+2]*.2+t*.9)*.18;
     gGeo.attributes.position.needsUpdate=true;
     ring.scale.setScalar(1+Math.sin(t*3)*.08);
+    const placed=[];
     for(const b of buses){
       const live=Math.max(0,b.sec-(now-b.at)/1000);
       b.t+=(tOf(live)-b.t)*(reduce?1:0.035);
       const p=curve.getPointAt(Math.min(Math.max(b.t,0),1)); b.sprite.position.set(p.x,0.5,p.z);
       const s=b.hot&&!reduce?2.5+Math.sin(t*6)*.5:2.3; b.sprite.scale.set(s,s,1);
       place(b.tag,b.sprite.position,0.7);
+      let x=parseFloat(b.tag.style.left), y=parseFloat(b.tag.style.top), w=b.tag.offsetWidth||40;
+      for(let k=0;k<4;k++){const hit=placed.find(o=>Math.abs(o.x-x)<(o.w+w)/2+4&&Math.abs(o.y-y)<22); if(!hit)break; y=hit.y-24}
+      b.tag.style.top=y+'px'; placed.push({x,y,w});
     }
     place(stopTag,stopPos,0.2);
     renderer.render(scene,cam);
@@ -112,7 +116,8 @@ let cfg=LS.get('bus.cfg',{id:'',secret:''});
 let pairs=LS.get('bus.pairs',[]);
 let cur=LS.get('bus.cur',pairs[0]&&pairs[0].id);
 let tok=LS.get('bus.tok',null);
-let busy=false;
+let busy=false, pausedUntil=0, lastTouch=Date.now(), idlePaused=false;
+const REFRESH_MS=30000, IDLE_MS=10*60000, BACKOFF_MS=120000;
 
 const norm=s=>(s||'').replace(/\s/g,'').replace(/（/g,'(').replace(/）/g,')');
 const core=s=>norm(s).split('(')[0];
@@ -142,7 +147,7 @@ async function api(path,params){
     try{r=await fetch(API+path+'?'+qs,{headers:{Authorization:'Bearer '+t}})}
     catch(e){throw new Error('連不上 TDX，請確認網路後再試。')}
     if(r.status===401&&!renewed){renewed=true; continue}
-    if(r.status===429&&i<3){await new Promise(ok=>setTimeout(ok,1500*(i+1))); continue}
+    if(r.status===429){const e=new Error('RATE'); e.rate=true; throw e}
     if(!r.ok){
       let body=''; try{body=(await r.text()).slice(0,200)}catch(e){}
       throw new Error((r.status===429?'TDX 回覆查詢太頻繁':'資料查詢失敗')+'（HTTP '+r.status+'）'+(body?'：'+body:''));
@@ -266,13 +271,17 @@ async function refresh(){
   renderGuide(hasKey,!!p);
   $('demoNote').hidden=true;
   if(!hasKey||!p){demo(p);return}
-  if(busy) return; busy=true; $('btnRefresh').classList.add('spin');
+  if(busy) return;
+  if(Date.now()<pausedUntil){showMsg('TDX 暫時限制這組金鑰的查詢次數，'+Math.ceil((pausedUntil-Date.now())/1000)+' 秒後自動恢復。畫面是最後一次的資料。');return}
+  busy=true; $('btnRefresh').classList.add('spin');
   try{
     if(!p.routes||!p.resolvedAt||Date.now()-p.resolvedAt>7*864e5){$('hero').innerHTML='<div class="board-empty">正在找可搭的路線…</div>'; await resolve(p)}
     if(!p.routes.length){$('hero').innerHTML='<div class="board-empty">找不到同時經過這兩站的路線</div>'; showMsg('請到設定確認站名，或按「重找路線」。'); return}
     renderRows(await loadEta(p),p.to); stamp(); showMsg('');
   }catch(e){
-    showMsg(e.message==='NOKEY'?'請先到設定填入金鑰。':e.message); $('live').classList.add('stale');
+    if(e.rate){pausedUntil=Date.now()+BACKOFF_MS; showMsg('TDX 暫時限制這組金鑰的查詢次數，2 分鐘後自動恢復。畫面是最後一次的資料。')}
+    else showMsg(e.message==='NOKEY'?'請先到設定填入金鑰。':e.message);
+    $('live').classList.add('stale');
   }finally{busy=false; $('btnRefresh').classList.remove('spin')}
 }
 
@@ -387,5 +396,18 @@ $('btnAdd').onclick=async()=>{
 
 /* ---------- 啟動 ---------- */
 renderChips(); refresh();
-setInterval(()=>{if(document.visibilityState==='visible'&&$('settings').hidden) refresh()},20000);
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&$('settings').hidden) refresh()});
+function onBoard(){return document.visibilityState==='visible'&&$('settings').hidden}
+function wake(){
+  lastTouch=Date.now();
+  if(idlePaused){idlePaused=false; showMsg(''); if(onBoard()) refresh()}
+}
+document.addEventListener('pointerdown',wake,{passive:true});
+setInterval(()=>{
+  if(!onBoard()) return;
+  if(Date.now()-lastTouch>IDLE_MS){
+    if(!idlePaused){idlePaused=true; showMsg('已暫停自動更新，以節省查詢次數。點一下畫面就會繼續。'); $('live').classList.add('stale')}
+    return;
+  }
+  refresh();
+},REFRESH_MS);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){lastTouch=Date.now(); idlePaused=false; if(onBoard()) refresh()}});
