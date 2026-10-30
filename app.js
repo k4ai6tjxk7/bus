@@ -109,7 +109,7 @@ const LS={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}
           set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 
 let cfg=LS.get('bus.cfg',{id:'',secret:''});
-let pairs=LS.get('bus.pairs',[{id:'p1',name:'下班',from:'捷運葫洲站(康寧大學)',to:'五分埤',routes:null}]);
+let pairs=LS.get('bus.pairs',[]);
 let cur=LS.get('bus.cur',pairs[0]&&pairs[0].id);
 let tok=LS.get('bus.tok',null);
 let busy=false;
