@@ -114,6 +114,28 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .note{background:var(--warn-bg);color:var(--warn-ink);border-radius:12px;padding:10px 14px;font-size:14px}
 .demo{font-size:12px;color:var(--muted);text-align:center}
 
+/* 新手引導：只在還沒設定好時出現 */
+.guide{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:18px 16px 16px;display:flex;flex-direction:column;gap:14px}
+.guide h2{margin:0;font-size:17px;font-weight:900;letter-spacing:.04em}
+.guide .lead{margin:-8px 0 0;font-size:13px;color:var(--muted)}
+.steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.step{display:grid;grid-template-columns:28px 1fr;column-gap:12px;position:relative;padding-bottom:16px}
+.step:last-child{padding-bottom:0}
+.step:not(:last-child)::before{content:"";position:absolute;left:13px;top:30px;bottom:2px;width:2px;background:var(--line)}
+.step.done:not(:last-child)::before{background:var(--route)}
+.num{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-size:13px;font-weight:700;border:2px solid var(--line);color:var(--muted);background:var(--surface);position:relative;z-index:1}
+.step.done .num{background:var(--route);border-color:var(--route);color:#fff}
+.step.now .num{border-color:var(--led);background:var(--board);color:var(--led)}
+.step-t{font-weight:700;font-size:15px;line-height:28px;color:var(--muted)}
+.step.now .step-t,.step.done .step-t{color:var(--ink)}
+.step-b{grid-column:2;display:flex;flex-direction:column;gap:10px;font-size:14px;margin-top:4px}
+.step-b ol{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px}
+.urlbox{display:flex;gap:8px;align-items:center;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:6px 6px 6px 12px}
+.urlbox a{flex:1;min-width:0;color:var(--route);font-weight:500;text-decoration:none;overflow-wrap:anywhere;font-size:14px}
+.urlbox .btn{padding:6px 12px;font-size:13px}
+.hint{font-size:12.5px;color:var(--muted)}
+.hint b{color:var(--ink);font-weight:500}
+
 @media (prefers-reduced-motion:no-preference){
   .blink{animation:blink 1.1s steps(2) infinite}
   .live:not(.stale) i{animation:pulse 2s ease-in-out infinite}
@@ -156,6 +178,7 @@ input,select{font:inherit;font-size:16px;color:var(--ink);background:var(--bg);b
   <div id="board" class="wrap" style="gap:16px;max-width:none">
     <div class="seg" id="chips" role="group" aria-label="起訖站組合"></div>
     <div class="trip" id="trip"></div>
+    <section class="guide" id="guide" hidden></section>
     <div class="note" id="msg" hidden></div>
     <div class="board" id="led">
       <div class="board-head"><span>即將進站</span><span class="live stale" id="live"><i></i><span id="stamp">--:--:--</span></span></div>
@@ -164,7 +187,7 @@ input,select{font:inherit;font-size:16px;color:var(--ink);background:var(--bg);b
     </div>
     <div class="sect" id="otherTitle" hidden>其他可搭路線</div>
     <div class="list" id="list" hidden></div>
-    <div class="demo" id="demoNote" hidden>目前顯示的是示範資料。到設定填入 TDX 金鑰後，會改成即時到站。</div>
+    <div class="demo" id="demoNote" hidden>看板目前是示範畫面，完成上方步驟後就會顯示即時到站。</div>
   </div>
 
   <!-- 設定 -->

@@ -252,19 +252,19 @@ function demo(p){
   const now=Date.now();
   const mk=(name,hops,d)=>({r:{name,hops},d});
   renderRows([
-    mk('內湖幹線',7,{StopStatus:0,EstimateTime:420}),
+    mk('307',7,{StopStatus:0,EstimateTime:420}),
     mk('紅2',6,{StopStatus:0,EstimateTime:110}),
-    mk('630',7,{StopStatus:0,EstimateTime:960}),
-    mk('小1',9,{StopStatus:1,NextBusTime:new Date(now+40*60000).toISOString()})
-  ].sort((a,b)=>rank(a.d)-rank(b.d)),p.to);
+    mk('262',7,{StopStatus:0,EstimateTime:960}),
+    mk('小2',9,{StopStatus:1,NextBusTime:new Date(now+40*60000).toISOString()})
+  ].sort((a,b)=>rank(a.d)-rank(b.d)),p?p.to:'下車站');
   $('demoNote').hidden=false; $('stamp').textContent='示範'; $('live').classList.add('stale');
 }
 
 async function refresh(){
-  const p=curPair();
+  const p=curPair(), hasKey=!!(cfg.id&&cfg.secret);
+  renderGuide(hasKey,!!p);
   $('demoNote').hidden=true;
-  if(!p){$('hero').innerHTML='<div class="board-empty">請到設定新增起訖站</div>';return}
-  if(!cfg.id||!cfg.secret){demo(p);return}
+  if(!hasKey||!p){demo(p);return}
   if(busy) return; busy=true; $('btnRefresh').classList.add('spin');
   try{
     if(!p.routes||!p.resolvedAt||Date.now()-p.resolvedAt>7*864e5){$('hero').innerHTML='<div class="board-empty">正在找可搭的路線…</div>'; await resolve(p)}
@@ -276,9 +276,49 @@ async function refresh(){
 }
 
 /* ---------- 設定 ---------- */
-function openSettings(on){
+function openSettings(on,focusId){
   $('board').hidden=on; $('settings').hidden=!on;
-  if(on){$('cid').value=cfg.id; $('csec').value=cfg.secret; renderPairs(); window.scrollTo(0,0)} else {renderChips(); refresh()}
+  if(on){
+    $('cid').value=cfg.id; $('csec').value=cfg.secret; renderPairs();
+    const f=focusId&&$(focusId);
+    if(f){f.scrollIntoView({block:'center'}); f.focus({preventScroll:true})} else window.scrollTo(0,0);
+  } else {renderChips(); refresh()}
+}
+
+/* ---------- 新手引導 ---------- */
+const TDX_SITE='https://tdx.transportdata.tw/';
+function renderGuide(hasKey,hasPair){
+  const g=$('guide');
+  if(hasKey&&hasPair){g.hidden=true; g.innerHTML=''; return}
+  const st=i=>i===1?(hasKey?'done':'now'):i===2?(hasPair?'done':(hasKey?'now':'')):'';
+  const s1=hasKey?'':`<div class="step-b">
+      <ol><li>到 TDX 網站註冊會員，並完成 Email 驗證</li>
+          <li>登入後到「會員中心」的 API 金鑰頁面</li>
+          <li>複製 <b>Client Id</b> 和 <b>Client Secret</b></li></ol>
+      <div class="urlbox"><a href="${TDX_SITE}" target="_blank" rel="noopener noreferrer">tdx.transportdata.tw</a><button class="btn" type="button" id="gCopy">複製網址</button></div>
+      <button class="btn primary" type="button" id="gKey">我拿到了，去貼上金鑰</button>
+      <div class="hint">金鑰只存在你這支手機的瀏覽器裡，不會上傳，也不會分享給別人。申請免費。</div></div>`;
+  const s2=(!hasKey||hasPair)?'':`<div class="step-b">
+      <div>搜尋你要上車和下車的站名。程式會自動找出所有同方向、會經過這兩站的路線，不用一條一條查。</div>
+      <button class="btn primary" type="button" id="gPair">新增上下車站</button>
+      <div class="hint">可以存好幾組，例如「上班」「下班」，在看板上方切換。</div></div>`;
+  g.innerHTML=`<h2>三步驟開始使用</h2>
+    <p class="lead">設定一次就好，之後打開就直接看到哪幾班車能到。</p>
+    <ol class="steps">
+      <li class="step ${st(1)}"><span class="num">${hasKey?'✓':'1'}</span><span class="step-t">申請 TDX 金鑰</span>${s1}</li>
+      <li class="step ${st(2)}"><span class="num">${hasPair?'✓':'2'}</span><span class="step-t">新增上下車站</span>${s2}</li>
+      <li class="step"><span class="num">3</span><span class="step-t">看即時到站</span></li>
+    </ol>
+    <div class="hint">小技巧：用 Safari 打開，點<b>分享</b> →<b>加入主畫面</b>，就能像 App 一樣一鍵打開。</div>`;
+  g.hidden=false;
+  const cp=$('gCopy');
+  if(cp) cp.onclick=async()=>{
+    try{await navigator.clipboard.writeText(TDX_SITE); cp.textContent='已複製'}
+    catch(e){const r=document.createRange(); r.selectNodeContents(g.querySelector('.urlbox a')); const s=getSelection(); s.removeAllRanges(); s.addRange(r); cp.textContent='已選取'}
+    setTimeout(()=>{cp.textContent='複製網址'},1800);
+  };
+  if($('gKey')) $('gKey').onclick=()=>openSettings(true,'cid');
+  if($('gPair')) $('gPair').onclick=()=>openSettings(true,'pName');
 }
 $('btnSettings').onclick=()=>openSettings($('settings').hidden);
 $('btnBack').onclick=()=>openSettings(false);
