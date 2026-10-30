@@ -97,7 +97,8 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .tag.stop{background:var(--route);color:#fff}
 
 /* 其他路線 */
-.sect{font-size:12px;color:var(--muted);letter-spacing:.14em;margin:4px 4px -6px}
+.sect{font-size:12px;color:var(--muted);letter-spacing:.14em;margin:4px 4px -6px;display:flex;justify-content:space-between;gap:12px}
+.sect .wait{width:84px;text-align:center;margin-right:12px;letter-spacing:.08em}
 .list{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
 .row{display:grid;grid-template-columns:1fr auto;align-items:center;gap:14px;padding:13px 16px;border-top:1px solid var(--line)}
 .row:first-child{border-top:0}
@@ -181,11 +182,11 @@ input,select{font:inherit;font-size:16px;color:var(--ink);background:var(--bg);b
     <section class="guide" id="guide" hidden></section>
     <div class="note" id="msg" hidden></div>
     <div class="board" id="led">
-      <div class="board-head"><span>即將進站</span><span class="live stale" id="live"><i></i><span id="stamp">--:--:--</span></span></div>
+      <div class="board-head"><span id="boardTitle">下一班進站</span><span class="live stale" id="live"><i></i><span id="stamp">--:--:--</span></span></div>
       <div class="scene" id="scene"><div class="tags" id="tags"></div></div>
       <div id="hero"><div class="board-empty">載入中…</div></div>
     </div>
-    <div class="sect" id="otherTitle" hidden>其他可搭路線</div>
+    <div class="sect" id="otherTitle" hidden><span>其他可搭路線</span><span class="wait">還要等</span></div>
     <div class="list" id="list" hidden></div>
     <div class="demo" id="demoNote" hidden>看板目前是示範畫面，完成上方步驟後就會顯示即時到站。</div>
   </div>

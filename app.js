@@ -223,6 +223,7 @@ function renderChips(){
   $('chips').innerHTML=pairs.map(p=>`<button type="button" data-id="${p.id}" aria-pressed="${p.id===(curPair()||{}).id}">${esc(p.name)}</button>`).join('');
   $('chips').hidden=pairs.length<2;
   const p=curPair();
+  $('boardTitle').textContent=p?core(p.from)+' 下一班進站':'下一班進站';
   $('trip').innerHTML=p?`<div class="dot"></div><div><div class="lbl">上車</div><div class="stop">${esc(p.from)}</div></div>
     <div class="rail"></div><div></div>
     <div class="dot end"></div><div><div class="lbl">下車</div><div class="stop">${esc(p.to)}</div></div>`:'';
