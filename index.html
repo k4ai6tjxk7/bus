@@ -337,14 +337,18 @@ async function getToken(force){
 }
 async function api(path,params){
   const qs=Object.entries(Object.assign({},params,{$format:'JSON'})).map(([k,v])=>k+'='+encodeURIComponent(v)).join('&');
-  for(let i=0;i<2;i++){
-    const t=await getToken(i>0);
+  let renewed=false;
+  for(let i=0;i<4;i++){
+    const t=await getToken(renewed);
     let r;
     try{r=await fetch(API+path+'?'+qs,{headers:{Authorization:'Bearer '+t}})}
     catch(e){throw new Error('連不上 TDX，請確認網路後再試。')}
-    if(r.status===401&&i===0) continue;
-    if(r.status===429) throw new Error('查詢太頻繁，下一輪會自動再試。');
-    if(!r.ok) throw new Error('資料查詢失敗（HTTP '+r.status+'）。');
+    if(r.status===401&&!renewed){renewed=true; continue}
+    if(r.status===429&&i<3){await new Promise(ok=>setTimeout(ok,1500*(i+1))); continue}
+    if(!r.ok){
+      let body=''; try{body=(await r.text()).slice(0,200)}catch(e){}
+      throw new Error((r.status===429?'TDX 回覆查詢太頻繁':'資料查詢失敗')+'（HTTP '+r.status+'）'+(body?'：'+body:''));
+    }
     return r.json();
   }
   throw new Error('金鑰驗證失敗，請到設定重新儲存。');
