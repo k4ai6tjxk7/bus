@@ -329,6 +329,7 @@ function renderChips(){
   $('pairName').textContent=p?p.name:'';
   const tip=!LS.get('bus.tip',false);
   const w=tip?'點這裡切換其他組合':why==='guess'?'通常這個時間用這組':why==='last'?'上次使用':'';
+  renderHidden(p);
   $('pairWhy').textContent=w; $('pairWhy').hidden=!w; $('pairWhy').classList.toggle('tip',tip);
   $('pairMenu').innerHTML=pairs.map(x=>{const on=p&&x.id===p.id;
     return `<button type="button" data-id="${esc(x.id)}" aria-current="${on}"><span class="mi"><span class="mn">${esc(x.name)}</span><span class="ms">${esc(x.from)} → ${esc(x.to)}</span></span>${on?CHECK:''}</button>`}).join('')
@@ -355,7 +356,28 @@ $('pairMenu').addEventListener('click',e=>{
 });
 document.addEventListener('click',e=>{if(!$('pairMenu').hidden&&!$('pairBox').contains(e.target)) closeMenu()});
 
+/* ---------- 排除路線：每組各自設定「不搭的路線」，只在畫面上過濾，不影響查詢次數 ----------
+   存在組合的 exclude 欄位（路線名稱陣列，選填）。舊資料沒有這個欄位＝不排除。
+   讀取時當不可信資料：只收字串、長度與筆數有上限。 */
+const EX_MAX=50;
+function exOf(p){const a=p&&p.exclude; return Array.isArray(a)?a.filter(s=>typeof s==='string'&&s.length<=40).slice(0,EX_MAX):[]}
+function routeNames(p){return p&&Array.isArray(p.routes)?[...new Set(p.routes.map(r=>r.name))]:[]}
+function hiddenCount(p){const ex=exOf(p); return routeNames(p).filter(n=>ex.includes(n)).length}
+function allExcluded(p){const n=routeNames(p); return n.length>0&&hiddenCount(p)===n.length}
+function renderHidden(p){
+  const n=hiddenCount(p), el=$('hidNote');
+  el.hidden=!n; el.textContent=n?`已隱藏 ${n} 條路線 · 修改`:'';
+}
+$('hidNote').addEventListener('click',()=>{const p=curPair(); if(p) openSettings(true,'ex-'+p.id)});
+
 function renderRows(rows,to,scene){
+  const p=curPair(), ex=exOf(p);
+  if(ex.length) rows=rows.filter(x=>!ex.includes(x.r.name));
+  renderHidden(p);
+  if(!rows.length&&allExcluded(p)){
+    if(window.setBuses) window.setBuses([]);
+    $('hero').innerHTML='<div class="board-empty">可搭的路線都已排除</div>';$('list').hidden=true;$('otherTitle').hidden=true;return;
+  }
   if(scene!==false&&window.setBuses) window.setBuses(rows.map(x=>{const d=x.d;
     const sec=d&&d.StopStatus===0&&d.EstimateTime!=null?d.EstimateTime:null;
     return {name:x.r.name,sec,hot:sec!=null&&sec<180}}));
@@ -431,6 +453,8 @@ async function refresh(auto){
       await resolve(p,onWait);
     }
     if(!p.routes.length){last=null; $('hero').innerHTML='<div class="board-empty">找不到同時經過這兩站的路線</div>'; showMsg('請到設定確認站名，或按「重找路線」。'); return}
+    /* 全部路線都排除了：不用查到站，省一次查詢 */
+    if(allExcluded(p)){last=null; renderRows([],p.to); showMsg(''); return}
     const rows=await loadEta(p,onWait);
     if(curPair()!==p) return; /* 等待期間使用者切換了組合 */
     last={pid:p.id,rows,to:p.to,at:Date.now()};
@@ -503,12 +527,23 @@ $('btnSaveKey').onclick=async()=>{
 const addWait=s=>{$('addStatus').textContent='為了不超過 TDX 每分鐘的查詢上限，約 '+s+' 秒後繼續…'};
 
 function renderPairs(){
-  $('pairList').innerHTML=pairs.length?pairs.map(p=>`<div class="pair"><div><b>${esc(p.name)}</b><div class="small">${esc(p.from)} → ${esc(p.to)}${p.routes?` · ${p.routes.length} 條路線`:''}</div></div>
-    <div class="btns"><button class="btn" type="button" data-act="re" data-id="${p.id}">重找路線</button><button class="btn danger" type="button" data-act="del" data-id="${p.id}">刪除</button></div></div>`).join(''):'<div class="small">目前沒有組合。</div>';
+  $('pairList').innerHTML=pairs.length?pairs.map(p=>{
+    const names=routeNames(p), ex=exOf(p);
+    const exw=names.length?`<div class="exw" id="ex-${esc(p.id)}" tabindex="-1"><div class="small">不搭的路線：點一下排除，看板上就不會顯示（只影響這一組）</div>
+      <div class="xchips">${names.map(n=>`<button type="button" class="xchip" data-act="ex" data-id="${esc(p.id)}" data-n="${esc(n)}" aria-pressed="${ex.includes(n)}">${esc(n)}</button>`).join('')}</div></div>`:'';
+    return `<div class="pair"><div><b>${esc(p.name)}</b><div class="small">${esc(p.from)} → ${esc(p.to)}${p.routes?` · ${names.length} 條路線`:''}${ex.length&&names.length?`，已排除 ${hiddenCount(p)} 條`:''}</div></div>
+    <div class="btns"><button class="btn" type="button" data-act="re" data-id="${esc(p.id)}">重找路線</button><button class="btn danger" type="button" data-act="del" data-id="${esc(p.id)}">刪除</button></div>${exw}</div>`}).join(''):'<div class="small">目前沒有組合。</div>';
 }
 $('pairList').addEventListener('click',async e=>{
   const b=e.target.closest('button'); if(!b)return;
   const p=pairs.find(x=>x.id===b.dataset.id); if(!p)return;
+  if(b.dataset.act==='ex'){
+    const n=b.dataset.n, ex=exOf(p);
+    p.exclude=ex.includes(n)?ex.filter(x=>x!==n):ex.concat(n).slice(0,EX_MAX);
+    LS.set('bus.pairs',pairs);
+    const y=window.scrollY; renderPairs(); window.scrollTo(0,y);
+    return;
+  }
   if(b.dataset.act==='del'){
     if(b.dataset.confirm!=='1'){b.dataset.confirm='1'; b.textContent='確定刪除'; return}
     pairs=pairs.filter(x=>x!==p); LS.set('bus.pairs',pairs); if(cur===p.id){cur=pairs[0]&&pairs[0].id; LS.set('bus.cur',cur)}
@@ -569,7 +604,7 @@ $('btnAdd').onclick=async()=>{
   try{
     const r=await resolve(p,addWait);
     pairs.push(p); LS.set('bus.pairs',pairs);
-    $('addStatus').textContent=r.length?`已新增，找到 ${r.length} 條路線：${[...new Set(r.map(x=>x.name))].join('、')}`:'已新增，但目前找不到同時經過這兩站的路線。';
+    $('addStatus').textContent=r.length?`已新增，找到 ${r.length} 條路線：${[...new Set(r.map(x=>x.name))].join('、')}。有不想搭的（例如比較繞），可以在上方這一組裡排除。`:'已新增，但目前找不到同時經過這兩站的路線。';
     renderPairs();
   }catch(e){$('addStatus').textContent=e.message==='NOKEY'?'請先儲存金鑰。':errText(e)}
 };

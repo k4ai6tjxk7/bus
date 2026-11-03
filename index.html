@@ -124,6 +124,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .eta .n{font-size:26px;line-height:1}
 .eta .u{font-size:12px;margin-left:3px}
 .eta.word{align-items:center;padding-top:0;font-size:15px;letter-spacing:.04em}
+.hidnote{align-self:center;font-size:12.5px;color:var(--muted);padding:4px 10px;margin-top:-8px;text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--line)}
 .list .empty{padding:20px 16px;color:var(--muted);font-size:14px;text-align:center}
 
 .note{background:var(--warn-bg);color:var(--warn-ink);border-radius:12px;padding:10px 14px;font-size:14px}
@@ -177,6 +178,12 @@ input,select{font:inherit;font-size:16px;color:var(--ink);background:var(--bg);b
 .small{font-size:13px;color:var(--muted)}
 .btns{display:flex;gap:6px;flex-wrap:wrap}
 .back{align-self:flex-start}
+.pair{flex-wrap:wrap}
+.exw{flex-basis:100%;display:flex;flex-direction:column;gap:8px;padding-top:4px}
+.exw:focus{outline:none}
+.xchips{display:flex;flex-wrap:wrap;gap:6px}
+.xchip{padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--bg);font-size:14px;font-weight:500}
+.xchip[aria-pressed="true"]{color:var(--led-hot);border-color:var(--led-hot);text-decoration:line-through;background:none}
 </style>
 </head>
 <body>
@@ -208,6 +215,7 @@ input,select{font:inherit;font-size:16px;color:var(--ink);background:var(--bg);b
     </div>
     <div class="sect" id="otherTitle" hidden><span>其他可搭路線</span><span class="wait">還要等</span></div>
     <div class="list" id="list" hidden></div>
+    <button class="hidnote" id="hidNote" type="button" hidden></button>
     <div class="demo" id="demoNote" hidden>看板目前是示範畫面，完成上方步驟後就會顯示即時到站。</div>
   </div>
 
@@ -251,6 +259,6 @@ input,select{font:inherit;font-size:16px;color:var(--ink);background:var(--bg);b
 </div>
 
 <script src="three.min.js"></script>
-<script src="app.js?v=20261103b"></script>
+<script src="app.js?v=20261103c"></script>
 </body>
 </html>
