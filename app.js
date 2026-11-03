@@ -471,7 +471,7 @@ function renderGuide(hasKey,hasPair){
   const s2=(!hasKey||hasPair)?'':`<div class="step-b">
       <div>搜尋你要上車和下車的站名。程式會自動找出所有同方向、會經過這兩站的路線，不用一條一條查。</div>
       <button class="btn primary" type="button" id="gPair">新增上下車站</button>
-      <div class="hint">可以存好幾組，例如「上班」「下班」，在看板上方切換。</div></div>`;
+      <div class="hint">可以存好幾組，例如「上班」「下班」。點看板上方的組合名稱就能切換，用幾次後會依時段自動打開常用的那組。</div></div>`;
   g.innerHTML=`<h2>三步驟開始使用</h2>
     <p class="lead">設定一次就好，之後打開就直接看到哪幾班車能到。</p>
     <ol class="steps">
