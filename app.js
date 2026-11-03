@@ -274,16 +274,86 @@ function subOf(x,to){
 function curPair(){return pairs.find(p=>p.id===cur)||pairs[0]}
 function showMsg(t){$('msg').textContent=t||''; $('msg').hidden=!t}
 
-function renderChips(){
-  $('chips').innerHTML=pairs.map(p=>`<button type="button" data-id="${p.id}" aria-pressed="${p.id===(curPair()||{}).id}">${esc(p.name)}</button>`).join('');
-  $('chips').hidden=pairs.length<2;
+/* ---------- 使用習慣：記下「什麼時間看哪一組」，開啟時自動切到常用的那組 ----------
+   只存 [組合 id, 時間(取到分鐘)]，不存站名、位置或金鑰；只在這支手機的 localStorage。
+   保留最近 30 天、最多 200 筆，所以不會越用越大。全部在本機計算，不呼叫 API。
+   規則：最近 30 天、平日/假日分開、現在前後 1 小時內，用最多次的那組；至少 3 次且沒有平手才自動選。 */
+const USAGE_KEY='bus.usage', USAGE_DAYS=30, USAGE_MAX=200, VIEW_MS=20000, SAME_GAP=20*60000, LEARN_MIN=3, LEARN_WIN=60;
+function usageLoad(){
+  const now=Date.now(), ids=new Set(pairs.map(p=>p.id)), a=LS.get(USAGE_KEY,[]);
+  if(!Array.isArray(a)) return [];
+  return a.filter(x=>Array.isArray(x)&&x.length===2&&typeof x[0]==='string'&&ids.has(x[0])&&
+      typeof x[1]==='number'&&isFinite(x[1])&&x[1]>now-USAGE_DAYS*864e5&&x[1]<=now+60000)
+    .sort((x,y)=>x[1]-y[1]).slice(-USAGE_MAX);
+}
+function usageAdd(id){
+  const now=Date.now(), a=usageLoad();
+  if(a.some(x=>x[0]===id&&now-x[1]<SAME_GAP)) return; /* 同一次使用只記一筆 */
+  a.push([id,Math.floor(now/60000)*60000]);
+  LS.set(USAGE_KEY,a.slice(-USAGE_MAX));
+}
+function usageGuess(){
+  const a=usageLoad(); if(!a.length) return null;
+  const weekend=d=>d.getDay()===0||d.getDay()===6, mins=d=>d.getHours()*60+d.getMinutes();
+  const now=new Date(), nw=weekend(now), nm=mins(now), cnt={};
+  for(const [id,ts] of a){
+    const d=new Date(ts); if(weekend(d)!==nw) continue;
+    let diff=Math.abs(mins(d)-nm); diff=Math.min(diff,1440-diff);
+    if(diff<=LEARN_WIN) cnt[id]=(cnt[id]||0)+1;
+  }
+  const top=Object.entries(cnt).sort((x,y)=>y[1]-x[1]);
+  if(!top.length||top[0][1]<LEARN_MIN||(top[1]&&top[1][1]===top[0][1])) return null;
+  return top[0][0];
+}
+/* 只在「打開 App」時呼叫，使用中不會突然跳組合。回傳是否換了組合 */
+let why='last';
+function autoPick(){
+  const g=usageGuess();
+  if(g&&pairs.some(p=>p.id===g)){const changed=g!==cur; cur=g; LS.set('bus.cur',cur); why='guess'; return changed}
+  why='last'; return false;
+}
+/* 停留在同一組超過 20 秒才算真的有在看 */
+let view={id:null,since:0,done:false};
+function viewStart(){const p=curPair(); view={id:p?p.id:null,since:Date.now(),done:false}}
+function viewCheck(){
   const p=curPair();
+  if(view.done||!p||p.id!==view.id||!(cfg.id&&cfg.secret)) return;
+  if(Date.now()-view.since>=VIEW_MS){view.done=true; usageAdd(p.id)}
+}
+
+const CHECK='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>';
+function closeMenu(){$('pairMenu').hidden=true; $('pairBtn').setAttribute('aria-expanded','false')}
+function renderChips(){
+  const p=curPair();
+  $('pairBox').hidden=pairs.length<2;
+  $('pairName').textContent=p?p.name:'';
+  const tip=!LS.get('bus.tip',false);
+  const w=tip?'點這裡切換其他組合':why==='guess'?'通常這個時間用這組':why==='last'?'上次使用':'';
+  $('pairWhy').textContent=w; $('pairWhy').hidden=!w; $('pairWhy').classList.toggle('tip',tip);
+  $('pairMenu').innerHTML=pairs.map(x=>{const on=p&&x.id===p.id;
+    return `<button type="button" data-id="${esc(x.id)}" aria-current="${on}"><span class="mi"><span class="mn">${esc(x.name)}</span><span class="ms">${esc(x.from)} → ${esc(x.to)}</span></span>${on?CHECK:''}</button>`}).join('')
+    +'<button type="button" class="manage" data-act="manage">新增或管理組合</button>';
   $('boardTitle').textContent=p?core(p.from)+' 下一班進站':'下一班進站';
   $('trip').innerHTML=p?`<div class="dot"></div><div><div class="lbl">上車</div><div class="stop">${esc(p.from)}</div></div>
     <div class="rail"></div><div></div>
     <div class="dot end"></div><div><div class="lbl">下車</div><div class="stop">${esc(p.to)}</div></div>`:'';
 }
-$('chips').addEventListener('click',e=>{const b=e.target.closest('button'); if(!b)return; cur=b.dataset.id; LS.set('bus.cur',cur); renderChips(); $('hero').innerHTML='<div class="board-empty">載入中…</div>'; $('list').hidden=true; $('otherTitle').hidden=true; refresh()});
+function loadPair(){$('hero').innerHTML='<div class="board-empty">載入中…</div>'; $('list').hidden=true; $('otherTitle').hidden=true; refresh(); viewStart()}
+$('pairBtn').addEventListener('click',()=>{
+  const open=$('pairMenu').hidden;
+  $('pairMenu').hidden=!open; $('pairBtn').setAttribute('aria-expanded',String(open));
+  if(open&&!LS.get('bus.tip',false)){LS.set('bus.tip',true); renderChips()} /* 提示看過一次就不再出現 */
+});
+$('pairMenu').addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b)return;
+  closeMenu();
+  if(b.dataset.act==='manage'){openSettings(true); return}
+  const id=b.dataset.id;
+  if(!pairs.some(p=>p.id===id)) return;
+  if(id===(curPair()||{}).id) return; /* 點同一組不重查 */
+  cur=id; LS.set('bus.cur',cur); why='manual'; renderChips(); loadPair();
+});
+document.addEventListener('click',e=>{if(!$('pairMenu').hidden&&!$('pairBox').contains(e.target)) closeMenu()});
 
 function renderRows(rows,to,scene){
   if(scene!==false&&window.setBuses) window.setBuses(rows.map(x=>{const d=x.d;
@@ -377,12 +447,12 @@ async function refresh(auto){
 
 /* ---------- 設定 ---------- */
 function openSettings(on,focusId){
-  $('board').hidden=on; $('settings').hidden=!on;
+  $('board').hidden=on; $('settings').hidden=!on; closeMenu();
   if(on){
-    $('cid').value=cfg.id; $('csec').value=cfg.secret; renderPairs();
+    $('cid').value=cfg.id; $('csec').value=cfg.secret; renderPairs(); renderUsage();
     const f=focusId&&$(focusId);
     if(f){f.scrollIntoView({block:'center'}); f.focus({preventScroll:true})} else window.scrollTo(0,0);
-  } else {renderChips(); refresh()}
+  } else {renderChips(); refresh(); viewStart()}
 }
 
 /* ---------- 新手引導 ---------- */
@@ -441,7 +511,9 @@ $('pairList').addEventListener('click',async e=>{
   const p=pairs.find(x=>x.id===b.dataset.id); if(!p)return;
   if(b.dataset.act==='del'){
     if(b.dataset.confirm!=='1'){b.dataset.confirm='1'; b.textContent='確定刪除'; return}
-    pairs=pairs.filter(x=>x!==p); LS.set('bus.pairs',pairs); if(cur===p.id){cur=pairs[0]&&pairs[0].id; LS.set('bus.cur',cur)} renderPairs();
+    pairs=pairs.filter(x=>x!==p); LS.set('bus.pairs',pairs); if(cur===p.id){cur=pairs[0]&&pairs[0].id; LS.set('bus.cur',cur)}
+    LS.set(USAGE_KEY,usageLoad()); /* 這組的使用紀錄一起刪掉 */
+    renderPairs(); renderUsage();
   }else{
     b.textContent='尋找中…';
     try{await resolve(p,addWait); $('addStatus').textContent=''; if(last&&last.pid===p.id) last=null}
@@ -449,6 +521,17 @@ $('pairList').addEventListener('click',async e=>{
     renderPairs();
   }
 });
+
+function renderUsage(){
+  const n=usageLoad().length;
+  $('usageStatus').textContent=n?`最近 30 天有 ${n} 筆紀錄`:'目前沒有紀錄';
+  const b=$('btnClearUsage'); b.textContent='清除使用習慣'; b.dataset.confirm=''; b.hidden=!n;
+}
+$('btnClearUsage').onclick=()=>{
+  const b=$('btnClearUsage');
+  if(b.dataset.confirm!=='1'){b.dataset.confirm='1'; b.textContent='確定清除'; return}
+  LS.set(USAGE_KEY,[]); renderUsage();
+};
 
 /* 同一個關鍵字這次打開頁面內只查一次，省查詢次數 */
 const stopCache=new Map();
@@ -492,7 +575,8 @@ $('btnAdd').onclick=async()=>{
 };
 
 /* ---------- 啟動 ---------- */
-renderChips(); refresh();
+/* 先決定要看哪一組，再送第一次查詢，避免先查錯的組合又切換而多花一次 */
+autoPick(); renderChips(); refresh(); viewStart();
 function onBoard(){return document.visibilityState==='visible'&&$('settings').hidden}
 function wake(){
   lastTouch=Date.now();
@@ -502,7 +586,7 @@ document.addEventListener('pointerdown',wake,{passive:true});
 /* 心跳：每 5 秒更新倒數，時間到了才真的去查 TDX */
 function heartbeat(){
   if(!onBoard()) return;
-  tickCountdown();
+  tickCountdown(); viewCheck();
   if(Date.now()-lastTouch>IDLE_MS){
     if(!idlePaused){idlePaused=true; showMsg('已暫停自動更新，以節省查詢次數。點一下畫面就會繼續。'); $('live').classList.add('stale')}
     return;
@@ -510,10 +594,19 @@ function heartbeat(){
   if(Date.now()-lastTry>=refreshDelay()) refresh(true);
 }
 setInterval(heartbeat,5000);
+/* 離開超過 30 分鐘再回來，視為重新打開 App：重新判斷要看哪一組 */
+const REOPEN_MS=30*60000;
+let hiddenAt=0;
 document.addEventListener('visibilitychange',()=>{
-  if(document.visibilityState!=='visible') return;
+  if(document.visibilityState!=='visible'){hiddenAt=Date.now(); closeMenu(); return}
   lastTouch=Date.now();
   if(idlePaused){idlePaused=false; showMsg('')}
+  const reopened=hiddenAt&&Date.now()-hiddenAt>=REOPEN_MS; hiddenAt=0;
+  viewStart();
+  if(reopened&&$('settings').hidden){
+    const changed=autoPick(); renderChips();
+    if(changed){loadPair(); return}
+  }
   /* 切回來時資料超過 20 秒才重查，其餘交給倒數 */
   if(onBoard()&&Date.now()-lastTry>20000) refresh(true); else tickCountdown();
 });
