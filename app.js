@@ -128,52 +128,17 @@ function curPair(){return store.current()}
 function viewPair(){return Board.legOf(curPair(),updater.leg())}
 function showMsg(t){$('msg').textContent=t||''; $('msg').hidden=!t}
 
-/* ---------- 使用習慣：記下「什麼時間看哪一組」，開啟時自動切到常用的那組 ----------
-   只存 [組合 id, 時間(取到分鐘)]，不存站名、位置或金鑰；只在這支手機的 localStorage。
-   保留最近 30 天、最多 200 筆，所以不會越用越大。全部在本機計算，不呼叫 API。
-   規則：最近 30 天、平日/假日分開、現在前後 1 小時內，用最多次的那組；至少 3 次且沒有平手才自動選。 */
-const USAGE_KEY='bus.usage', USAGE_DAYS=30, USAGE_MAX=200, VIEW_MS=20000, SAME_GAP=20*60000, LEARN_MIN=3, LEARN_WIN=60;
-function usageLoad(){
-  const now=Date.now(), ids=new Set(store.list().map(p=>p.id)), a=LS.get(USAGE_KEY,[]);
-  if(!Array.isArray(a)) return [];
-  return a.filter(x=>Array.isArray(x)&&x.length===2&&typeof x[0]==='string'&&ids.has(x[0])&&
-      typeof x[1]==='number'&&isFinite(x[1])&&x[1]>now-USAGE_DAYS*864e5&&x[1]<=now+60000)
-    .sort((x,y)=>x[1]-y[1]).slice(-USAGE_MAX);
-}
-function usageAdd(id){
-  const now=Date.now(), a=usageLoad();
-  if(a.some(x=>x[0]===id&&now-x[1]<SAME_GAP)) return; /* 同一次使用只記一筆 */
-  a.push([id,Math.floor(now/60000)*60000]);
-  LS.set(USAGE_KEY,a.slice(-USAGE_MAX));
-}
-function usageGuess(){
-  const a=usageLoad(); if(!a.length) return null;
-  const weekend=d=>d.getDay()===0||d.getDay()===6, mins=d=>d.getHours()*60+d.getMinutes();
-  const now=new Date(), nw=weekend(now), nm=mins(now), cnt={};
-  for(const [id,ts] of a){
-    const d=new Date(ts); if(weekend(d)!==nw) continue;
-    let diff=Math.abs(mins(d)-nm); diff=Math.min(diff,1440-diff);
-    if(diff<=LEARN_WIN) cnt[id]=(cnt[id]||0)+1;
-  }
-  const top=Object.entries(cnt).sort((x,y)=>y[1]-x[1]);
-  if(!top.length||top[0][1]<LEARN_MIN||(top[1]&&top[1][1]===top[0][1])) return null;
-  return top[0][0];
-}
+/* ---------- 使用習慣：記錄、猜常用組合、清除都交給 usage.js ---------- */
+const usage=Usage.createUsage({storage:LS_ADAPTER,pairIds:()=>store.list().map(p=>p.id)});
 /* 只在「打開 App」時呼叫，使用中不會突然跳組合。回傳是否換了組合 */
 let why='last';
 function autoPick(){
-  const g=usageGuess();
+  const g=usage.guess();
   if(g){const before=(curPair()||{}).id; if(store.select(g)){why='guess'; return g!==before}}
   why='last'; return false;
 }
-/* 停留在同一組超過 20 秒才算真的有在看 */
-let view={id:null,since:0,done:false};
-function viewStart(){const p=curPair(); view={id:p?p.id:null,since:Date.now(),done:false}}
-function viewCheck(){
-  const p=curPair();
-  if(view.done||!p||p.id!==view.id||!tdx.hasKey()) return;
-  if(Date.now()-view.since>=VIEW_MS){view.done=true; usageAdd(p.id)}
-}
+/* 停留在同一組超過 20 秒才算真的有在看（規則在 usage.js） */
+function viewStart(){const p=curPair(); usage.viewStart(p&&p.id)}
 
 const CHECK='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>';
 function closeMenu(){$('pairMenu').hidden=true; $('pairBtn').setAttribute('aria-expanded','false')}
@@ -387,7 +352,7 @@ $('pairList').addEventListener('click',async e=>{
   if(b.dataset.act==='del'){
     if(b.dataset.confirm!=='1'){b.dataset.confirm='1'; b.textContent='確定刪除'; return}
     store.remove(p.id);
-    LS.set(USAGE_KEY,usageLoad()); /* 這組的使用紀錄一起刪掉 */
+    usage.forget(p.id); /* 這組的使用紀錄一起刪掉 */
     renderPairs(); renderUsage();
   }else if(b.dataset.act==='via'){
     b.textContent='尋找中…';
@@ -418,14 +383,14 @@ $('pairList').addEventListener('click',async e=>{
 });
 
 function renderUsage(){
-  const n=usageLoad().length;
+  const n=usage.count();
   $('usageStatus').textContent=n?`最近 30 天有 ${n} 筆紀錄`:'目前沒有紀錄';
   const b=$('btnClearUsage'); b.textContent='清除使用習慣'; b.dataset.confirm=''; b.hidden=!n;
 }
 $('btnClearUsage').onclick=()=>{
   const b=$('btnClearUsage');
   if(b.dataset.confirm!=='1'){b.dataset.confirm='1'; b.textContent='確定清除'; return}
-  LS.set(USAGE_KEY,[]); renderUsage();
+  usage.clear(); renderUsage();
 };
 
 /* 生活圈：預設用最後新增那組的生活圈；換生活圈時站名要重新搜尋 */
@@ -488,7 +453,11 @@ autoPick(); renderChips(); updater.start(); viewStart();
 function onBoard(){return document.visibilityState==='visible'&&$('settings').hidden}
 document.addEventListener('pointerdown',()=>updater.touch(),{passive:true});
 /* 心跳：每 5 秒更新倒數，時間到了才真的去查 TDX（由到站更新決定） */
-setInterval(()=>{if(onBoard()) viewCheck(); updater.tick()},5000);
+setInterval(()=>{
+  /* 有金鑰、而且在看板上才記使用時間 */
+  if(onBoard()&&tdx.hasKey()){const p=curPair(); usage.viewTick(p&&p.id)}
+  updater.tick();
+},5000);
 /* 離開超過 30 分鐘再回來，視為重新打開 App：到站更新回到第一段，這裡重新判斷要看哪一組 */
 document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState!=='visible'){updater.leave(); closeMenu(); return}
