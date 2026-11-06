@@ -67,17 +67,18 @@
     if(reduce) frame(now);
   };
 
+  /* 先宣告：開啟「減少動態效果」時，resize() 會立刻畫一格，用到這兩個變數 */
+  const v=new THREE.Vector3();
+  const stopPos=new THREE.Vector3(0,2.4,0);
   function resize(){const w=host.clientWidth,h=host.clientHeight; if(!w||!h)return; renderer.setSize(w,h,false); cam.aspect=w/h; cam.updateProjectionMatrix(); if(reduce) frame(performance.now())}
   if(window.ResizeObserver) new ResizeObserver(resize).observe(host); else window.addEventListener('resize',resize);
   resize();
 
-  const v=new THREE.Vector3();
   function place(el,pos,yOff){
     v.copy(pos); v.y+=yOff; v.project(cam);
     const w=host.clientWidth,h=host.clientHeight, vis=v.z<1&&v.x>-1.05&&v.x<1.05&&v.y<1;
     el.style.opacity=vis?1:0; el.style.left=((v.x+1)/2*w)+'px'; el.style.top=((1-v.y)/2*h)+'px';
   }
-  const stopPos=new THREE.Vector3(0,2.4,0);
   function frame(now){
     const t=now/1000;
     cam.position.set(4+Math.sin(t*.15)*2.5,5.5+Math.sin(t*.2)*.4,9); cam.lookAt(-1,0,-18);
