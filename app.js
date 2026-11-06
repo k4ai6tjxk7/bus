@@ -112,9 +112,11 @@ const $=id=>document.getElementById(id);
 const LS={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},
           set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 
-let cfg=LS.get('bus.cfg',{id:'',secret:''});
-let pairs=LS.get('bus.pairs',[]);
-let cur=LS.get('bus.cur',pairs[0]&&pairs[0].id);
+let cfg=LS.get('bus.cfg',null);
+/* 金鑰設定壞掉（不是物件或欄位不是字串）就當成沒填，不讓整頁停擺 */
+if(!cfg||typeof cfg!=='object'||typeof cfg.id!=='string'||typeof cfg.secret!=='string') cfg={id:'',secret:''};
+/* 組合的讀寫、驗證全部交給組合儲存（pairs.js） */
+const store=PairStore.createPairStore({get:k=>LS.get(k),set:(k,v)=>LS.set(k,v)});
 let tok=LS.get('bus.tok',null);
 let busy=false, pausedUntil=0, lastTouch=Date.now(), idlePaused=false;
 const IDLE_MS=10*60000, BACKOFF_MS=65000;
@@ -200,30 +202,29 @@ async function api(path,params,onWait){
 /* 自動更新需要幾次額度（不夠就跳過這輪，不和手動操作搶） */
 function callsNeeded(p){
   let n=tokValid()?0:1;
-  if(!p.routes||!p.resolvedAt||Date.now()-p.resolvedAt>7*864e5) n+=CITIES.length;
+  if(store.needsRoutes(p.id)) n+=CITIES.length;
   n+=p.routes?new Set(p.routes.map(r=>r.city)).size:CITIES.length;
   return n;
 }
 
 /* 找出先經過上車站、再經過下車站（同方向）的路線 */
-async function resolve(p,onWait){
+async function findRoutes(from,to,onWait){
   const seen={};
   for(const city of CITIES){
-    const data=await api('/StopOfRoute/City/'+city,{$filter:`Stops/any(s: contains(s/StopName/Zh_tw,'${q(core(p.from))}'))`,
+    const data=await api('/StopOfRoute/City/'+city,{$filter:`Stops/any(s: contains(s/StopName/Zh_tw,'${q(core(from))}'))`,
       $select:'RouteUID,RouteName,Direction,Stops'},onWait);
     for(const r of data){
       const st=r.Stops||[];
-      const oi=st.findIndex(s=>norm(s.StopName.Zh_tw)===norm(p.from));
+      const oi=st.findIndex(s=>norm(s.StopName.Zh_tw)===norm(from));
       if(oi<0) continue;
-      const di=st.findIndex((s,i)=>i>oi&&norm(s.StopName.Zh_tw)===norm(p.to));
+      const di=st.findIndex((s,i)=>i>oi&&norm(s.StopName.Zh_tw)===norm(to));
       if(di<0) continue;
       const key=city+r.RouteUID+r.Direction+st[oi].StopUID;
       const item={city,route:r.RouteUID,name:r.RouteName.Zh_tw,dir:r.Direction,stop:st[oi].StopUID,hops:di-oi};
       if(!seen[key]||seen[key].hops>item.hops) seen[key]=item;
     }
   }
-  p.routes=Object.values(seen); p.resolvedAt=Date.now(); LS.set('bus.pairs',pairs);
-  return p.routes;
+  return Object.values(seen);
 }
 
 async function loadEta(p,onWait){
@@ -271,7 +272,7 @@ function subOf(x,to){
   return s;
 }
 
-function curPair(){return pairs.find(p=>p.id===cur)||pairs[0]}
+function curPair(){return store.current()}
 function showMsg(t){$('msg').textContent=t||''; $('msg').hidden=!t}
 
 /* ---------- 使用習慣：記下「什麼時間看哪一組」，開啟時自動切到常用的那組 ----------
@@ -280,7 +281,7 @@ function showMsg(t){$('msg').textContent=t||''; $('msg').hidden=!t}
    規則：最近 30 天、平日/假日分開、現在前後 1 小時內，用最多次的那組；至少 3 次且沒有平手才自動選。 */
 const USAGE_KEY='bus.usage', USAGE_DAYS=30, USAGE_MAX=200, VIEW_MS=20000, SAME_GAP=20*60000, LEARN_MIN=3, LEARN_WIN=60;
 function usageLoad(){
-  const now=Date.now(), ids=new Set(pairs.map(p=>p.id)), a=LS.get(USAGE_KEY,[]);
+  const now=Date.now(), ids=new Set(store.list().map(p=>p.id)), a=LS.get(USAGE_KEY,[]);
   if(!Array.isArray(a)) return [];
   return a.filter(x=>Array.isArray(x)&&x.length===2&&typeof x[0]==='string'&&ids.has(x[0])&&
       typeof x[1]==='number'&&isFinite(x[1])&&x[1]>now-USAGE_DAYS*864e5&&x[1]<=now+60000)
@@ -309,7 +310,7 @@ function usageGuess(){
 let why='last';
 function autoPick(){
   const g=usageGuess();
-  if(g&&pairs.some(p=>p.id===g)){const changed=g!==cur; cur=g; LS.set('bus.cur',cur); why='guess'; return changed}
+  if(g){const before=(curPair()||{}).id; if(store.select(g)){why='guess'; return g!==before}}
   why='last'; return false;
 }
 /* 停留在同一組超過 20 秒才算真的有在看 */
@@ -325,13 +326,14 @@ const CHECK='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l5 5 9-10
 function closeMenu(){$('pairMenu').hidden=true; $('pairBtn').setAttribute('aria-expanded','false')}
 function renderChips(){
   const p=curPair();
-  $('pairBox').hidden=pairs.length<2;
+  const list=store.list();
+  $('pairBox').hidden=list.length<2;
   $('pairName').textContent=p?p.name:'';
   const tip=!LS.get('bus.tip',false);
   const w=tip?'點這裡切換其他組合':why==='guess'?'通常這個時間用這組':why==='last'?'上次使用':'';
   renderHidden(p);
   $('pairWhy').textContent=w; $('pairWhy').hidden=!w; $('pairWhy').classList.toggle('tip',tip);
-  $('pairMenu').innerHTML=pairs.map(x=>{const on=p&&x.id===p.id;
+  $('pairMenu').innerHTML=list.map(x=>{const on=p&&x.id===p.id;
     return `<button type="button" data-id="${esc(x.id)}" aria-current="${on}"><span class="mi"><span class="mn">${esc(x.name)}</span><span class="ms">${esc(x.from)} → ${esc(x.to)}</span></span>${on?CHECK:''}</button>`}).join('')
     +'<button type="button" class="manage" data-act="manage">新增或管理組合</button>';
   $('boardTitle').textContent=p?core(p.from)+' 下一班進站':'下一班進站';
@@ -350,17 +352,15 @@ $('pairMenu').addEventListener('click',e=>{
   closeMenu();
   if(b.dataset.act==='manage'){openSettings(true); return}
   const id=b.dataset.id;
-  if(!pairs.some(p=>p.id===id)) return;
   if(id===(curPair()||{}).id) return; /* 點同一組不重查 */
-  cur=id; LS.set('bus.cur',cur); why='manual'; renderChips(); loadPair();
+  if(!store.select(id)) return;
+  why='manual'; renderChips(); loadPair();
 });
 document.addEventListener('click',e=>{if(!$('pairMenu').hidden&&!$('pairBox').contains(e.target)) closeMenu()});
 
 /* ---------- 排除路線：每組各自設定「不搭的路線」，只在畫面上過濾，不影響查詢次數 ----------
-   存在組合的 exclude 欄位（路線名稱陣列，選填）。舊資料沒有這個欄位＝不排除。
-   讀取時當不可信資料：只收字串、長度與筆數有上限。 */
-const EX_MAX=50;
-function exOf(p){const a=p&&p.exclude; return Array.isArray(a)?a.filter(s=>typeof s==='string'&&s.length<=40).slice(0,EX_MAX):[]}
+   存在組合的 exclude 欄位（路線名稱陣列，選填）。驗證與上限由組合儲存負責。 */
+function exOf(p){return p?p.exclude:[]}
 function routeNames(p){return p&&Array.isArray(p.routes)?[...new Set(p.routes.map(r=>r.name))]:[]}
 function hiddenCount(p){const ex=exOf(p); return routeNames(p).filter(n=>ex.includes(n)).length}
 function allExcluded(p){const n=routeNames(p); return n.length>0&&hiddenCount(p)===n.length}
@@ -435,7 +435,7 @@ function demo(p){
 
 /* auto=true：自動更新，額度不夠就跳過這輪；auto=false：使用者操作，額度不夠就排隊等 */
 async function refresh(auto){
-  const p=curPair(), hasKey=!!(cfg.id&&cfg.secret);
+  let p=curPair(); const hasKey=!!(cfg.id&&cfg.secret);
   renderGuide(hasKey,!!p);
   $('demoNote').hidden=true;
   if(!hasKey||!p){demo(p);return}
@@ -445,19 +445,21 @@ async function refresh(auto){
     return;
   }
   if(auto&&rlFree()<Math.min(callsNeeded(p),RL_MAX)) return;
+  const pid=p.id, stillHere=()=>(curPair()||{}).id===pid;
   busy=true; lastTry=Date.now(); $('btnRefresh').classList.add('spin');
   const onWait=s=>showMsg('為了不超過 TDX 每分鐘的查詢上限，約 '+s+' 秒後送出查詢…');
   try{
-    if(!p.routes||!p.resolvedAt||Date.now()-p.resolvedAt>7*864e5){
-      if(!last||last.pid!==p.id) $('hero').innerHTML='<div class="board-empty">正在找可搭的路線…</div>';
-      await resolve(p,onWait);
+    if(store.needsRoutes(pid)){
+      if(!last||last.pid!==pid) $('hero').innerHTML='<div class="board-empty">正在找可搭的路線…</div>';
+      p=store.setRoutes(pid,await findRoutes(p.from,p.to,onWait));
+      if(!p||!stillHere()) return; /* 等待期間組合被刪除或切換了 */
     }
-    if(!p.routes.length){last=null; $('hero').innerHTML='<div class="board-empty">找不到同時經過這兩站的路線</div>'; showMsg('請到設定確認站名，或按「重找路線」。'); return}
+    if(!p.routes||!p.routes.length){last=null; $('hero').innerHTML='<div class="board-empty">找不到同時經過這兩站的路線</div>'; showMsg('請到設定確認站名，或按「重找路線」。'); return}
     /* 全部路線都排除了：不用查到站，省一次查詢 */
     if(allExcluded(p)){last=null; renderRows([],p.to); showMsg(''); return}
     const rows=await loadEta(p,onWait);
-    if(curPair()!==p) return; /* 等待期間使用者切換了組合 */
-    last={pid:p.id,rows,to:p.to,at:Date.now()};
+    if(!stillHere()) return; /* 等待期間使用者切換了組合 */
+    last={pid,rows,to:p.to,at:Date.now()};
     renderRows(rows,p.to); stamp(); showMsg('');
   }catch(e){
     if(e.rate){pausedUntil=Date.now()+BACKOFF_MS; showMsg('TDX 暫時限制這組金鑰的查詢次數，約 1 分鐘後自動恢復。畫面是最後一次的資料。')}
@@ -465,7 +467,7 @@ async function refresh(auto){
     $('live').classList.add('stale');
   }finally{
     busy=false; $('btnRefresh').classList.remove('spin');
-    if(curPair()!==p) lastTry=0; /* 讓下一次心跳馬上查新的組合 */
+    if(!stillHere()) lastTry=0; /* 讓下一次心跳馬上查新的組合 */
   }
 }
 
@@ -527,7 +529,8 @@ $('btnSaveKey').onclick=async()=>{
 const addWait=s=>{$('addStatus').textContent='為了不超過 TDX 每分鐘的查詢上限，約 '+s+' 秒後繼續…'};
 
 function renderPairs(){
-  $('pairList').innerHTML=pairs.length?pairs.map(p=>{
+  const list=store.list();
+  $('pairList').innerHTML=list.length?list.map(p=>{
     const names=routeNames(p), ex=exOf(p);
     const exw=names.length?`<div class="exw" id="ex-${esc(p.id)}" tabindex="-1"><div class="small">不搭的路線：點一下排除，看板上就不會顯示（只影響這一組）</div>
       <div class="xchips">${names.map(n=>`<button type="button" class="xchip" data-act="ex" data-id="${esc(p.id)}" data-n="${esc(n)}" aria-pressed="${ex.includes(n)}">${esc(n)}</button>`).join('')}</div></div>`:'';
@@ -536,22 +539,20 @@ function renderPairs(){
 }
 $('pairList').addEventListener('click',async e=>{
   const b=e.target.closest('button'); if(!b)return;
-  const p=pairs.find(x=>x.id===b.dataset.id); if(!p)return;
+  const p=store.list().find(x=>x.id===b.dataset.id); if(!p)return;
   if(b.dataset.act==='ex'){
-    const n=b.dataset.n, ex=exOf(p);
-    p.exclude=ex.includes(n)?ex.filter(x=>x!==n):ex.concat(n).slice(0,EX_MAX);
-    LS.set('bus.pairs',pairs);
+    store.toggleExclude(p.id,b.dataset.n);
     const y=window.scrollY; renderPairs(); window.scrollTo(0,y);
     return;
   }
   if(b.dataset.act==='del'){
     if(b.dataset.confirm!=='1'){b.dataset.confirm='1'; b.textContent='確定刪除'; return}
-    pairs=pairs.filter(x=>x!==p); LS.set('bus.pairs',pairs); if(cur===p.id){cur=pairs[0]&&pairs[0].id; LS.set('bus.cur',cur)}
+    store.remove(p.id);
     LS.set(USAGE_KEY,usageLoad()); /* 這組的使用紀錄一起刪掉 */
     renderPairs(); renderUsage();
   }else{
     b.textContent='尋找中…';
-    try{await resolve(p,addWait); $('addStatus').textContent=''; if(last&&last.pid===p.id) last=null}
+    try{store.setRoutes(p.id,await findRoutes(p.from,p.to,addWait)); $('addStatus').textContent=''; if(last&&last.pid===p.id) last=null}
     catch(err){$('addStatus').textContent=err.message==='NOKEY'?'請先儲存金鑰。':errText(err)}
     renderPairs();
   }
@@ -597,13 +598,13 @@ bindSearch('sFrom','kwFrom','selFrom'); bindSearch('sTo','kwTo','selTo');
 
 $('btnAdd').onclick=async()=>{
   const from=$('selFrom').hidden?'':$('selFrom').value, to=$('selTo').hidden?'':$('selTo').value;
-  const name=$('pName').value.trim()||'組合 '+(pairs.length+1);
+  const name=$('pName').value.trim()||'組合 '+(store.list().length+1);
   if(!from||!to){$('addStatus').textContent='請先搜尋並選擇上車站和下車站。';return}
-  const p={id:'p'+Date.now(),name,from,to,routes:null};
+  if(store.list().length>=PairStore.PAIR_MAX){$('addStatus').textContent='最多只能存 '+PairStore.PAIR_MAX+' 組，請先刪除不用的組合。';return} /* 先擋，不浪費查詢 */
   $('addStatus').textContent='正在找出符合的路線…';
   try{
-    const r=await resolve(p,addWait);
-    pairs.push(p); LS.set('bus.pairs',pairs);
+    const r=await findRoutes(from,to,addWait);
+    store.add(name,from,to,r);
     $('addStatus').textContent=r.length?`已新增，找到 ${r.length} 條路線：${[...new Set(r.map(x=>x.name))].join('、')}。有不想搭的（例如比較繞），可以在上方這一組裡排除。`:'已新增，但目前找不到同時經過這兩站的路線。';
     renderPairs();
   }catch(e){$('addStatus').textContent=e.message==='NOKEY'?'請先儲存金鑰。':errText(e)}
