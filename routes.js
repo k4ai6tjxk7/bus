@@ -1,9 +1,16 @@
 'use strict';
-/* ---------- 路線比對 ----------
-   給 TDX StopOfRoute 原始資料（每筆加上 _city），算出：
-   - direct：先經過上車站、再經過下車站（同方向）的路線
-   - transfers：沒有直達時，可以轉一次車的轉乘站候選
-   不連網、不記狀態，查詢由 tdx.js 負責。
+/* ---------- 找路線 ----------
+   「查經過上車站的路線 → 算直達 → 查經過下車站的路線 → 算轉乘」只寫在這裡。
+   createFinder({routesThrough}) 回傳三個操作，routesThrough(關鍵字, opts) 由 tdx.js 提供：
+   - resolve(組合, opts) → {routes, routes2, direct}
+       重找路線。直達組合查 1 次；轉乘組合查 2 次，只看組合已選的轉乘站，順便看看是不是有直達了。
+   - forNewPair(生活圈, 上車站, 下車站, opts) → {direct, cands}
+       新增組合。先查上車站，有直達就停；沒有才查下車站，列出轉乘站候選。
+   - transferOptions(組合, opts) → 轉乘站候選陣列
+       換轉乘站／找轉乘站。兩站都查。
+   null 約定：任何一次查詢回傳 null（自動更新額度不夠，這次跳過），就不再查下一站，整個操作回傳 null。
+   查哪個生活圈由組合的 region（或 forNewPair 的生活圈）決定；每查一站實際花的次數＝生活圈的縣市數（見 tdx.js）。
+   查詢錯誤（TdxError）原樣往外丟。
 
    路線格式（和組合儲存相同）：{city, route, name, dir, stop, hops}
      stop 是上車的站牌 StopUID（轉乘第二段就是轉乘站的站牌），hops 是坐幾站。
@@ -95,7 +102,33 @@
     return out.slice(0,limit);
   }
 
-  const api={direct,transfers,dist,norm,stopCore,MAX_DIST};
+  function createFinder(deps){
+    const through=(name,region,opts)=>deps.routesThrough(stopCore(name),Object.assign({},opts,{region}));
+    return {
+      async resolve(pair,opts){
+        const rawFrom=await through(pair.from,pair.region,opts); if(rawFrom===null) return null;
+        const d=direct(rawFrom,pair.from,pair.to);
+        if(!pair.via) return {routes:d};
+        const rawTo=await through(pair.to,pair.region,opts); if(rawTo===null) return null;
+        const c=transfers(rawFrom,rawTo,pair.from,pair.to,{via:pair.via})[0];
+        return {routes:c?c.routes1:[],routes2:c?c.routes2:[],direct:d};
+      },
+      async forNewPair(region,from,to,opts){
+        const rawFrom=await through(from,region,opts); if(rawFrom===null) return null;
+        const d=direct(rawFrom,from,to);
+        if(d.length) return {direct:d,cands:[]};
+        const rawTo=await through(to,region,opts); if(rawTo===null) return null;
+        return {direct:d,cands:transfers(rawFrom,rawTo,from,to)};
+      },
+      async transferOptions(pair,opts){
+        const rawFrom=await through(pair.from,pair.region,opts); if(rawFrom===null) return null;
+        const rawTo=await through(pair.to,pair.region,opts); if(rawTo===null) return null;
+        return transfers(rawFrom,rawTo,pair.from,pair.to);
+      }
+    };
+  }
+
+  const api={createFinder,stopCore,MAX_DIST};
   if(typeof module!=='undefined'&&module.exports) module.exports=api;
   else root.Routes=api;
 })(typeof window!=='undefined'?window:this);

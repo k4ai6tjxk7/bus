@@ -115,6 +115,8 @@ const LS_ADAPTER={get:k=>LS.get(k),set:(k,v)=>LS.set(k,v)};
 const store=PairStore.createPairStore(LS_ADAPTER);
 /* 和 TDX 打交道（金鑰、token、查詢額度、錯誤訊息）全部交給 TDX 查詢（tdx.js） */
 const tdx=Tdx.createTdx({fetch:(u,o)=>fetch(u,o),storage:LS_ADAPTER});
+/* 找路線（直達、轉乘）全部交給 routes.js；它透過 TDX 查詢取得經過某站的路線 */
+const finder=Routes.createFinder({routesThrough:(k,o)=>tdx.routesThrough(k,o)});
 let busy=false, lastTouch=Date.now(), idlePaused=false;
 const IDLE_MS=10*60000;
 
@@ -127,7 +129,6 @@ function curPair(){return store.current()}
 /* 轉乘組合目前看第幾段（1 或 2）；換組合、重新打開 App 都回到第一段，不存起來 */
 let leg=1;
 function viewPair(){return Board.legOf(curPair(),leg)}
-const regionOpts=(p,o)=>Object.assign({region:p&&p.region},o);
 function showMsg(t){$('msg').textContent=t||''; $('msg').hidden=!t}
 
 /* ---------- 使用習慣：記下「什麼時間看哪一組」，開啟時自動切到常用的那組 ----------
@@ -294,28 +295,6 @@ function demo(p){
   $('demoNote').hidden=false; $('stamp').textContent='示範'; $('live').classList.add('stale');
 }
 
-/* 找路線：查經過上車站的路線算出直達；轉乘組合再查經過下車站的路線，兩段一起重找，順便看看是不是有直達了。
-   查詢次數和以前一樣：直達組合 1 次、轉乘組合 2 次（乘上生活圈的縣市數）。
-   回傳 {routes, routes2, direct}；自動更新額度不夠回傳 null */
-async function resolveRoutes(p,opts){
-  const o=regionOpts(p,opts);
-  const rawFrom=await tdx.routesThrough(Routes.stopCore(p.from),o); if(rawFrom===null) return null;
-  const direct=Routes.direct(rawFrom,p.from,p.to);
-  if(!p.via) return {routes:direct};
-  const rawTo=await tdx.routesThrough(Routes.stopCore(p.to),o); if(rawTo===null) return null;
-  const c=Routes.transfers(rawFrom,rawTo,p.from,p.to,{via:p.via})[0];
-  return {routes:c?c.routes1:[],routes2:c?c.routes2:[],direct};
-}
-/* 沒有直達時找轉乘站候選（最多 3 個）。回傳 {direct, cands} */
-async function findTransfers(region,from,to,opts){
-  const o=Object.assign({region},opts);
-  const rawFrom=await tdx.routesThrough(Routes.stopCore(from),o);
-  const direct=Routes.direct(rawFrom,from,to);
-  if(direct.length) return {direct,cands:[]};
-  const rawTo=await tdx.routesThrough(Routes.stopCore(to),o);
-  return {direct,cands:Routes.transfers(rawFrom,rawTo,from,to)};
-}
-
 /* auto=true：自動更新，額度不夠就跳過這輪；auto=false：使用者操作，額度不夠就排隊等 */
 async function refresh(auto){
   let p=curPair(); const hasKey=tdx.hasKey();
@@ -331,7 +310,7 @@ async function refresh(auto){
   try{
     if(store.needsRoutes(pid)){
       if(!last||last.pid!==pid) $('hero').innerHTML='<div class="board-empty">正在找可搭的路線…</div>';
-      const found=await resolveRoutes(p,opts);
+      const found=await finder.resolve(p,opts);
       if(found===null) return skipped();
       p=store.setRoutes(pid,found.routes,found);
       if(!p||!stillHere()) return; /* 等待期間組合被刪除或切換了 */
@@ -479,10 +458,9 @@ $('pairList').addEventListener('click',async e=>{
   }else if(b.dataset.act==='via'){
     b.textContent='尋找中…';
     try{
-      const o=Object.assign({region:p.region},addOpts);
-      const raw1=await tdx.routesThrough(Routes.stopCore(p.from),o), raw2=await tdx.routesThrough(Routes.stopCore(p.to),o);
-      const cands=Routes.transfers(raw1,raw2,p.from,p.to);
+      const cands=await finder.transferOptions(p,addOpts);
       renderPairs();
+      if(cands===null) return; /* 這次沒查到：畫面維持原樣 */
       const el=$('vp-'+p.id); if(!el) return;
       if(!cands.length){el.innerHTML='<div class="note">找不到只轉一次車的轉乘站。</div>'; return}
       renderPicker(el,cands,`${p.from} → ${p.to}：可以在下面這些站轉一次車`,c=>'改在'+c.via+'轉乘',c=>{
@@ -494,9 +472,11 @@ $('pairList').addEventListener('click',async e=>{
   }else{
     b.textContent='尋找中…';
     try{
-      const r=await resolveRoutes(p,addOpts);
-      store.setRoutes(p.id,r.routes,r); $('addStatus').textContent=''; if(last&&last.pid===p.id) last=null;
-      if(!p.via&&!r.routes.length) $('addStatus').textContent=`「${p.name}」找不到直達的路線，可以按「找轉乘站」。`;
+      const r=await finder.resolve(p,addOpts);
+      if(r){ /* null＝這次沒查到：畫面維持原樣 */
+        store.setRoutes(p.id,r.routes,r); $('addStatus').textContent=''; if(last&&last.pid===p.id) last=null;
+        if(!p.via&&!r.routes.length) $('addStatus').textContent=`「${p.name}」找不到直達的路線，可以按「找轉乘站」。`;
+      }
     }
     catch(err){setErr(err)}
     renderPairs();
@@ -547,7 +527,9 @@ $('btnAdd').onclick=async()=>{
   $('viaPick').innerHTML='';
   $('addStatus').textContent='正在找出符合的路線…';
   try{
-    const {direct:r,cands}=await findTransfers(region,from,to,addOpts);
+    const found=await finder.forNewPair(region,from,to,addOpts);
+    if(!found){$('addStatus').textContent=''; return} /* 這次沒查到：畫面維持原樣 */
+    const {direct:r,cands}=found;
     if(r.length||!cands.length){
       store.add(name,from,to,r,{region});
       $('addStatus').textContent=r.length?`已新增，找到 ${r.length} 條路線：${[...new Set(r.map(x=>x.name))].join('、')}。有不想搭的（例如比較繞），可以在上方這一組裡排除。`
