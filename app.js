@@ -117,18 +117,15 @@ const store=PairStore.createPairStore(LS_ADAPTER);
 const tdx=Tdx.createTdx({fetch:(u,o)=>fetch(u,o),storage:LS_ADAPTER});
 /* 找路線（直達、轉乘）全部交給 routes.js；它透過 TDX 查詢取得經過某站的路線 */
 const finder=Routes.createFinder({routesThrough:(k,o)=>tdx.routesThrough(k,o)});
-let busy=false, lastTouch=Date.now(), idlePaused=false;
-const IDLE_MS=10*60000;
+/* 何時查到站、查完存什麼、看第幾段全部交給到站更新（updater.js）；這裡只負責把畫面資料畫出來 */
+const updater=Updater.createUpdater({store,finder,tdx,onChange:v=>render(v)});
 
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-/* 排隊等額度時的提示：limit 自己保留額度、paused 被 TDX 擋 */
-const waitText=(s,why,then)=>why==='paused'?'TDX 暫時限制這組金鑰的查詢次數，約 '+s+' 秒後自動重試…'
-  :'為了不超過 TDX 每分鐘的查詢上限，約 '+s+' 秒後'+(then||'送出查詢')+'…';
+const waitText=Updater.waitText;
 
 function curPair(){return store.current()}
-/* 轉乘組合目前看第幾段（1 或 2）；換組合、重新打開 App 都回到第一段，不存起來 */
-let leg=1;
-function viewPair(){return Board.legOf(curPair(),leg)}
+/* 轉乘組合目前看第幾段（1 或 2），由到站更新決定；換組合、重新打開 App 都回到第一段 */
+function viewPair(){return Board.legOf(curPair(),updater.leg())}
 function showMsg(t){$('msg').textContent=t||''; $('msg').hidden=!t}
 
 /* ---------- 使用習慣：記下「什麼時間看哪一組」，開啟時自動切到常用的那組 ----------
@@ -166,7 +163,7 @@ function usageGuess(){
 let why='last';
 function autoPick(){
   const g=usageGuess();
-  if(g){const before=(curPair()||{}).id; if(store.select(g)){why='guess'; if(g!==before) leg=1; return g!==before}}
+  if(g){const before=(curPair()||{}).id; if(store.select(g)){why='guess'; return g!==before}}
   why='last'; return false;
 }
 /* 停留在同一組超過 20 秒才算真的有在看 */
@@ -181,7 +178,7 @@ function viewCheck(){
 const CHECK='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>';
 function closeMenu(){$('pairMenu').hidden=true; $('pairBtn').setAttribute('aria-expanded','false')}
 function renderChips(){
-  const p=curPair();
+  const p=curPair(), leg=updater.leg();
   const list=store.list();
   $('pairBox').hidden=list.length<2;
   $('pairName').textContent=p?p.name:'';
@@ -205,18 +202,12 @@ function renderChips(){
     lb.innerHTML=leg===2?'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>回第一段'
       :`到${esc(p.via)}了，看下一段<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>`;
   }
-  if(!p||!p.via||leg===2) $('legNote').hidden=true;
 }
 const stopsText=p=>p.via?p.from+' → '+p.via+' → '+p.to:p.from+' → '+p.to;
 $('legBtn').addEventListener('click',()=>{
-  const p=curPair(); if(!p||!p.via) return;
-  leg=leg===2?1:2; renderChips();
-  /* 兩段的到站資料是一起查的，直接用手上的資料重畫，不另外查詢 */
-  if(last&&last.pid===p.id){const b=lastBoard(); if(b){renderBoard(b,true); renderLegNote()}}
-  else refresh();
+  updater.switchLeg();
   window.scrollTo(0,0);
 });
-function loadPair(){leg=1; renderChips(); $('hero').innerHTML='<div class="board-empty">載入中…</div>'; $('list').hidden=true; $('otherTitle').hidden=true; refresh(); viewStart()}
 $('pairBtn').addEventListener('click',()=>{
   const open=$('pairMenu').hidden;
   $('pairMenu').hidden=!open; $('pairBtn').setAttribute('aria-expanded',String(open));
@@ -229,7 +220,7 @@ $('pairMenu').addEventListener('click',e=>{
   const id=b.dataset.id;
   if(id===(curPair()||{}).id) return; /* 點同一組不重查 */
   if(!store.select(id)) return;
-  why='manual'; renderChips(); loadPair();
+  why='manual'; updater.select(id); viewStart();
 });
 document.addEventListener('click',e=>{if(!$('pairMenu').hidden&&!$('pairBox').contains(e.target)) closeMenu()});
 
@@ -242,7 +233,7 @@ function renderHidden(){
   const n=hiddenCount(viewPair()), el=$('hidNote');
   el.hidden=!n; el.textContent=n?`已隱藏 ${n} 條路線 · 修改`:'';
 }
-$('hidNote').addEventListener('click',()=>{const p=curPair(); if(p) openSettings(true,(p.via&&leg===2?'ex2-':'ex-')+p.id)});
+$('hidNote').addEventListener('click',()=>{const p=curPair(); if(p) openSettings(true,(p.via&&updater.leg()===2?'ex2-':'ex-')+p.id)});
 
 /* 把看板內容畫出來；所有文字都在這裡跳脫。scene=true 才更新 3D 光點（倒數時 3D 自己會動） */
 const EMPTY_TEXT={noBus:'目前沒有車',allExcluded:'可搭的路線都已排除',noRoutes:'找不到同時經過這兩站的路線'};
@@ -261,89 +252,32 @@ function renderBoard(b,scene){
   $('otherTitle').hidden=!b.rest.length; $('list').hidden=!b.rest.length;
   $('list').innerHTML=b.rest.map(x=>`<div class="row"><div class="rinfo"><div class="rname">${esc(x.name)}</div><div class="rsub">${esc(x.sub)}</div></div>${etaHtml(x.eta,'eta',false)}</div>`).join('');
 }
-function stamp(){const n=new Date(); $('stamp').textContent=n.toLocaleTimeString('zh-TW',{hour12:false}); $('live').classList.remove('stale')}
-
-/* ---------- 本地倒數：兩次查詢之間，畫面自己扣秒數（扣秒由看板內容負責） ---------- */
-let last=null; /* {pid,rows,at} 最後一次成功取得的原始到站資料 */
-let lastTry=0; /* 最後一次嘗試自動/手動查詢的時間 */
-function lastBoard(){
-  const p=last&&store.list().find(x=>x.id===last.pid);
-  return p?Board.boardOf(Board.legOf(p,leg),last.rows,last.at,Date.now()):null;
-}
-/* 看第一段時，第二段沒車才顯示一行警告 */
-function renderLegNote(){
-  const p=curPair(), el=$('legNote');
-  const t=p&&p.via&&leg===1&&last&&last.pid===p.id?Board.secondLegNote(p,last.rows,last.at,Date.now()):null;
-  el.textContent=t||''; el.hidden=!t;
-}
-function tickCountdown(){
-  const p=curPair();
-  if(!last||!p||last.pid!==p.id) return;
-  const b=lastBoard(); if(!b) return;
-  renderBoard(b,false); renderLegNote();
-  if(b.stale) $('live').classList.add('stale');
-}
-/* 依最近一班車決定多久查一次：3 分鐘內 30 秒、其他 60 秒、沒有即時資料 90 秒 */
-function refreshDelay(){
-  const b=lastBoard();
-  return b?b.nextRefreshMs:30000;
-}
-
-/* 示範資料：尚未填金鑰時顯示，讓畫面不是空的 */
-function demo(p){
-  renderBoard(Board.demoBoard(p?p.to:'',Date.now()),true);
-  $('demoNote').hidden=false; $('stamp').textContent='示範'; $('live').classList.add('stale');
-}
-
-/* auto=true：自動更新，額度不夠就跳過這輪；auto=false：使用者操作，額度不夠就排隊等 */
-async function refresh(auto){
-  let p=curPair(); const hasKey=tdx.hasKey();
-  renderGuide(hasKey,!!p);
-  $('demoNote').hidden=true;
-  if(!hasKey||!p){demo(p);return}
-  if(busy) return;
-  const pid=p.id, stillHere=()=>(curPair()||{}).id===pid, prevTry=lastTry;
-  busy=true; lastTry=Date.now(); $('btnRefresh').classList.add('spin');
-  /* auto：額度不夠時 TDX 查詢回傳 null（這輪跳過），下一次心跳再試 */
-  const opts={auto:!!auto,onWait:(s,why)=>showMsg(waitText(s,why))};
-  const skipped=()=>{lastTry=prevTry};
-  try{
-    if(store.needsRoutes(pid)){
-      if(!last||last.pid!==pid) $('hero').innerHTML='<div class="board-empty">正在找可搭的路線…</div>';
-      const found=await finder.resolve(p,opts);
-      if(found===null) return skipped();
-      p=store.setRoutes(pid,found.routes,found);
-      if(!p||!stillHere()) return; /* 等待期間組合被刪除或切換了 */
-    }
-    /* 這一段找不到路線、或路線全部排除了：不用查到站，省一次查詢 */
-    const pre=Board.boardOf(Board.legOf(p,leg),[],Date.now(),Date.now());
-    if(pre.state==='noRoutes'){last=null; renderBoard(pre,false); $('legNote').hidden=true;
-      showMsg(p.via?'這一段找不到路線，請到設定按「換轉乘站」或「重找路線」。':'請到設定確認站名，或按「重找路線」。'); return}
-    if(pre.state==='allExcluded'){last=null; renderBoard(pre,true); $('legNote').hidden=true; showMsg(''); return}
-    /* 轉乘組合兩段的站牌一起查（同縣市合併成一次），切換段落時不用再查 */
-    const rows=await tdx.arrivals(p.via?p.routes.concat(p.routes2||[]):p.routes,opts);
-    if(rows===null) return skipped();
-    if(!stillHere()) return; /* 等待期間使用者切換了組合 */
-    const at=Date.now();
-    last={pid,rows,at}; lastTry=at; /* 從拿到資料起算下次更新（排隊等很久時不會一查完又馬上再查） */
-    renderBoard(lastBoard(),true); renderLegNote(); stamp(); showMsg('');
-  }catch(e){
-    showMsg(e.message+(e.kind==='rate'?'畫面是最後一次的資料。':''));
-    $('live').classList.add('stale');
-  }finally{
-    busy=false; $('btnRefresh').classList.remove('spin');
-    if(!stillHere()) lastTry=0; /* 讓下一次心跳馬上查新的組合 */
-  }
+/* 到站更新交來的畫面資料畫出來；狀態都在 updater.js，這裡不記 */
+let drawn={pid:undefined,leg:undefined,stampAt:undefined};
+function render(v){
+  const pid=v.pair?v.pair.id:null;
+  if(pid!==drawn.pid||v.leg!==drawn.leg){drawn.pid=pid; drawn.leg=v.leg; renderChips()}
+  renderGuide(tdx.hasKey(),!!v.pair);
+  $('demoNote').hidden=v.mode!=='demo';
+  if(v.loading){$('hero').innerHTML=`<div class="board-empty">${esc(v.loading)}</div>`; $('list').hidden=true; $('otherTitle').hidden=true; renderHidden()}
+  else if(v.board) renderBoard(v.board,v.scene);
+  $('legNote').textContent=v.legNote||''; $('legNote').hidden=!v.legNote;
+  showMsg(v.message);
+  if(v.mode==='demo'){$('stamp').textContent='示範'; drawn.stampAt=undefined}
+  else if(v.stampAt!=null&&v.stampAt!==drawn.stampAt){drawn.stampAt=v.stampAt; $('stamp').textContent=new Date(v.stampAt).toLocaleTimeString('zh-TW',{hour12:false})}
+  $('live').classList.toggle('stale',v.stale);
+  $('btnRefresh').classList.toggle('spin',v.spinning);
 }
 
 /* ---------- 設定 ---------- */
 function openSettings(on,focusId){
   $('board').hidden=on; $('settings').hidden=!on; closeMenu();
+  if(on) updater.setActive(false);
   if(on){
     const k=tdx.key(); $('cid').value=k.id; $('csec').value=k.secret; renderPairs(); renderUsage(); renderRegions(); $('viaPick').innerHTML='';
     const f=focusId&&$(focusId);
     if(f){f.scrollIntoView({block:'center'}); f.focus({preventScroll:true})} else window.scrollTo(0,0);
-  } else {renderChips(); refresh(); viewStart()}
+  } else {renderChips(); updater.setActive(true); viewStart()}
 }
 
 /* ---------- 新手引導 ---------- */
@@ -384,7 +318,7 @@ function renderGuide(hasKey,hasPair){
 }
 $('btnSettings').onclick=()=>openSettings($('settings').hidden);
 $('btnBack').onclick=()=>openSettings(false);
-$('btnRefresh').onclick=()=>refresh();
+$('btnRefresh').onclick=()=>updater.refresh();
 
 $('btnSaveKey').onclick=async()=>{
   $('keyStatus').textContent='測試中…';
@@ -448,7 +382,7 @@ $('pairList').addEventListener('click',async e=>{
     store.toggleExclude(p.id,b.dataset.n,+b.dataset.leg);
     keepScroll(); return;
   }
-  if(b.dataset.act==='direct'){store.useDirect(p.id); if(last&&last.pid===p.id) last=null; keepScroll(); return}
+  if(b.dataset.act==='direct'){store.useDirect(p.id); keepScroll(); return}
   if(b.dataset.act==='keep'){store.dismissDirect(p.id); keepScroll(); return}
   if(b.dataset.act==='del'){
     if(b.dataset.confirm!=='1'){b.dataset.confirm='1'; b.textContent='確定刪除'; return}
@@ -464,7 +398,7 @@ $('pairList').addEventListener('click',async e=>{
       const el=$('vp-'+p.id); if(!el) return;
       if(!cands.length){el.innerHTML='<div class="note">找不到只轉一次車的轉乘站。</div>'; return}
       renderPicker(el,cands,`${p.from} → ${p.to}：可以在下面這些站轉一次車`,c=>'改在'+c.via+'轉乘',c=>{
-        store.setVia(p.id,c.via,c.routes1,c.routes2); if(last&&last.pid===p.id) last=null;
+        store.setVia(p.id,c.via,c.routes1,c.routes2);
         renderPairs(); $('addStatus').textContent='';
       });
       el.scrollIntoView({block:'nearest'});
@@ -474,7 +408,7 @@ $('pairList').addEventListener('click',async e=>{
     try{
       const r=await finder.resolve(p,addOpts);
       if(r){ /* null＝這次沒查到：畫面維持原樣 */
-        store.setRoutes(p.id,r.routes,r); $('addStatus').textContent=''; if(last&&last.pid===p.id) last=null;
+        store.setRoutes(p.id,r.routes,r); $('addStatus').textContent='';
         if(!p.via&&!r.routes.length) $('addStatus').textContent=`「${p.name}」找不到直達的路線，可以按「找轉乘站」。`;
       }
     }
@@ -550,39 +484,14 @@ $('btnAdd').onclick=async()=>{
 
 /* ---------- 啟動 ---------- */
 /* 先決定要看哪一組，再送第一次查詢，避免先查錯的組合又切換而多花一次 */
-autoPick(); renderChips(); refresh(); viewStart();
+autoPick(); renderChips(); updater.start(); viewStart();
 function onBoard(){return document.visibilityState==='visible'&&$('settings').hidden}
-function wake(){
-  lastTouch=Date.now();
-  if(idlePaused){idlePaused=false; showMsg(''); if(onBoard()) refresh()}
-}
-document.addEventListener('pointerdown',wake,{passive:true});
-/* 心跳：每 5 秒更新倒數，時間到了才真的去查 TDX */
-function heartbeat(){
-  if(!onBoard()) return;
-  tickCountdown(); viewCheck();
-  if(Date.now()-lastTouch>IDLE_MS){
-    if(!idlePaused){idlePaused=true; showMsg('已暫停自動更新，以節省查詢次數。點一下畫面就會繼續。'); $('live').classList.add('stale')}
-    return;
-  }
-  if(Date.now()-lastTry>=refreshDelay()) refresh(true);
-}
-setInterval(heartbeat,5000);
-/* 離開超過 30 分鐘再回來，視為重新打開 App：重新判斷要看哪一組 */
-const REOPEN_MS=30*60000;
-let hiddenAt=0;
+document.addEventListener('pointerdown',()=>updater.touch(),{passive:true});
+/* 心跳：每 5 秒更新倒數，時間到了才真的去查 TDX（由到站更新決定） */
+setInterval(()=>{if(onBoard()) viewCheck(); updater.tick()},5000);
+/* 離開超過 30 分鐘再回來，視為重新打開 App：到站更新回到第一段，這裡重新判斷要看哪一組 */
 document.addEventListener('visibilitychange',()=>{
-  if(document.visibilityState!=='visible'){hiddenAt=Date.now(); closeMenu(); return}
-  lastTouch=Date.now();
-  if(idlePaused){idlePaused=false; showMsg('')}
-  const reopened=hiddenAt&&Date.now()-hiddenAt>=REOPEN_MS; hiddenAt=0;
+  if(document.visibilityState!=='visible'){updater.leave(); closeMenu(); return}
   viewStart();
-  if(reopened&&$('settings').hidden){
-    const back=leg!==1; leg=1; /* 重新打開時，轉乘組合回到第一段 */
-    const changed=autoPick(); renderChips();
-    if(changed){loadPair(); return}
-    if(back){const b=lastBoard(); if(b){renderBoard(b,true); renderLegNote()}}
-  }
-  /* 切回來時資料超過 20 秒才重查，其餘交給倒數 */
-  if(onBoard()&&Date.now()-lastTry>20000) refresh(true); else tickCountdown();
+  updater.back(()=>{const changed=autoPick(); renderChips(); return changed});
 });
