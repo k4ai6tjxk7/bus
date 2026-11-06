@@ -227,6 +227,7 @@ async function findRoutes(from,to,onWait){
   return Object.values(seen);
 }
 
+/* 到站資料：只負責查詢，對到路線、排序、去重都交給看板內容（board.js） */
 async function loadEta(p,onWait){
   const byCity={};
   p.routes.forEach(r=>{if(CITIES.includes(r.city))(byCity[r.city]=byCity[r.city]||new Set()).add(r.stop)});
@@ -235,41 +236,9 @@ async function loadEta(p,onWait){
     const f=[...byCity[city]].map(u=>`StopUID eq '${q(u)}'`).join(' or ');
     const data=await api('/EstimatedTimeOfArrival/City/'+city,{$filter:f,
       $select:'StopUID,RouteUID,Direction,StopStatus,EstimateTime,NextBusTime'},onWait);
-    data.forEach(d=>rows.push(Object.assign(d,{_city:city})));
+    if(Array.isArray(data)) data.forEach(d=>{if(d&&typeof d==='object') rows.push(Object.assign(d,{_city:city}))});
   }
-  const names={};
-  return p.routes.map(r=>{
-    const m=rows.filter(d=>d._city===r.city&&d.StopUID===r.stop&&d.RouteUID===r.route&&d.Direction===r.dir);
-    m.sort((a,b)=>rank(a)-rank(b));
-    return {r,d:m[0]};
-  }).filter(x=>{const k=x.r.name+x.r.dir; if(names[k])return false; names[k]=1; return true})
-    .sort((a,b)=>rank(a.d)-rank(b.d));
-}
-
-/* ---------- 顯示 ---------- */
-function rank(d){
-  if(!d) return 9e9;
-  if(d.StopStatus===0&&d.EstimateTime!=null) return d.EstimateTime;
-  if(d.StopStatus===1) return 1e6+(d.NextBusTime?Date.parse(d.NextBusTime)/1e3%1e6:5e5);
-  return 2e6+(d.StopStatus||0);
-}
-const hhmm=t=>{const x=new Date(t);return String(x.getHours()).padStart(2,'0')+':'+String(x.getMinutes()).padStart(2,'0')};
-/* 回傳 {kind:'min'|'word', n, text, tone:'hot'|'dim'|''} */
-function etaOf(d){
-  if(!d) return {kind:'word',text:'無資料',tone:'dim'};
-  if(d.StopStatus===0&&d.EstimateTime!=null){
-    const s=d.EstimateTime;
-    if(s<60) return {kind:'word',text:'進站中',tone:'hot'};
-    if(s<180) return {kind:'word',text:'將到站',tone:'hot'};
-    return {kind:'min',n:Math.floor(s/60),tone:''};
-  }
-  if(d.StopStatus===1) return d.NextBusTime?{kind:'word',text:hhmm(d.NextBusTime),tone:''}:{kind:'word',text:'未發車',tone:'dim'};
-  return {kind:'word',text:({2:'交管不停',3:'末班已過',4:'今日停駛'}[d.StopStatus]||'無資料'),tone:'dim'};
-}
-function subOf(x,to){
-  let s=`坐 ${x.r.hops} 站到${esc(to)}`;
-  if(x.d&&x.d.StopStatus===1&&x.d.NextBusTime) s='首站發車 '+hhmm(x.d.NextBusTime)+' · '+s;
-  return s;
+  return rows;
 }
 
 function curPair(){return store.current()}
@@ -363,73 +332,54 @@ document.addEventListener('click',e=>{if(!$('pairMenu').hidden&&!$('pairBox').co
 function exOf(p){return p?p.exclude:[]}
 function routeNames(p){return p&&Array.isArray(p.routes)?[...new Set(p.routes.map(r=>r.name))]:[]}
 function hiddenCount(p){const ex=exOf(p); return routeNames(p).filter(n=>ex.includes(n)).length}
-function allExcluded(p){const n=routeNames(p); return n.length>0&&hiddenCount(p)===n.length}
 function renderHidden(p){
   const n=hiddenCount(p), el=$('hidNote');
   el.hidden=!n; el.textContent=n?`已隱藏 ${n} 條路線 · 修改`:'';
 }
 $('hidNote').addEventListener('click',()=>{const p=curPair(); if(p) openSettings(true,'ex-'+p.id)});
 
-function renderRows(rows,to,scene){
-  const p=curPair(), ex=exOf(p);
-  if(ex.length) rows=rows.filter(x=>!ex.includes(x.r.name));
-  renderHidden(p);
-  if(!rows.length&&allExcluded(p)){
-    if(window.setBuses) window.setBuses([]);
-    $('hero').innerHTML='<div class="board-empty">可搭的路線都已排除</div>';$('list').hidden=true;$('otherTitle').hidden=true;return;
+/* 把看板內容畫出來；所有文字都在這裡跳脫。scene=true 才更新 3D 光點（倒數時 3D 自己會動） */
+const EMPTY_TEXT={noBus:'目前沒有車',allExcluded:'可搭的路線都已排除',noRoutes:'找不到同時經過這兩站的路線'};
+function etaHtml(e,cls,hero){
+  return e.kind==='min'?`<div class="${cls}"><span class="n">${e.n}</span><span class="u">分</span></div>`
+    :`<div class="${cls} word ${e.tone}${hero&&e.tone==='hot'?' blink':''}">${esc(e.text)}</div>`;
+}
+function renderBoard(b,scene){
+  renderHidden(curPair());
+  if(scene&&window.setBuses) window.setBuses(b.buses);
+  if(b.state!=='ok'){
+    $('hero').innerHTML=`<div class="board-empty">${esc(EMPTY_TEXT[b.state])}</div>`;$('list').hidden=true;$('otherTitle').hidden=true;return;
   }
-  if(scene!==false&&window.setBuses) window.setBuses(rows.map(x=>{const d=x.d;
-    const sec=d&&d.StopStatus===0&&d.EstimateTime!=null?d.EstimateTime:null;
-    return {name:x.r.name,sec,hot:sec!=null&&sec<180}}));
-  if(!rows.length){$('hero').innerHTML='<div class="board-empty">目前沒有車</div>';$('list').hidden=true;$('otherTitle').hidden=true;return}
-  const h=rows[0], e=etaOf(h.d);
-  const etaHtml=e.kind==='min'?`<div class="hero-eta"><span class="n">${e.n}</span><span class="u">分</span></div>`
-    :`<div class="hero-eta word ${e.tone} ${e.tone==='hot'?'blink':''}">${esc(e.text)}</div>`;
-  $('hero').innerHTML=`<div class="hero"><div style="min-width:0"><div class="hero-route ${e.tone==='dim'?'dim':''}">${esc(h.r.name)}</div><div class="hero-sub">${subOf(h,to)}</div></div>${etaHtml}</div>`;
-  const rest=rows.slice(1);
-  $('otherTitle').hidden=!rest.length; $('list').hidden=!rest.length;
-  $('list').innerHTML=rest.map(x=>{const e=etaOf(x.d);
-    const eh=e.kind==='min'?`<div class="eta"><span class="n">${e.n}</span><span class="u">分</span></div>`
-      :`<div class="eta word ${e.tone}">${esc(e.text)}</div>`;
-    return `<div class="row"><div class="rinfo"><div class="rname">${esc(x.r.name)}</div><div class="rsub">${subOf(x,to)}</div></div>${eh}</div>`}).join('');
+  const h=b.hero;
+  $('hero').innerHTML=`<div class="hero"><div style="min-width:0"><div class="hero-route ${h.eta.tone==='dim'?'dim':''}">${esc(h.name)}</div><div class="hero-sub">${esc(h.sub)}</div></div>${etaHtml(h.eta,'hero-eta',true)}</div>`;
+  $('otherTitle').hidden=!b.rest.length; $('list').hidden=!b.rest.length;
+  $('list').innerHTML=b.rest.map(x=>`<div class="row"><div class="rinfo"><div class="rname">${esc(x.name)}</div><div class="rsub">${esc(x.sub)}</div></div>${etaHtml(x.eta,'eta',false)}</div>`).join('');
 }
 function stamp(){const n=new Date(); $('stamp').textContent=n.toLocaleTimeString('zh-TW',{hour12:false}); $('live').classList.remove('stale')}
 
-/* ---------- 本地倒數：兩次查詢之間，畫面自己扣秒數 ---------- */
-let last=null; /* {pid,rows,to,at} 最後一次成功取得的到站資料 */
+/* ---------- 本地倒數：兩次查詢之間，畫面自己扣秒數（扣秒由看板內容負責） ---------- */
+let last=null; /* {pid,rows,at} 最後一次成功取得的原始到站資料 */
 let lastTry=0; /* 最後一次嘗試自動/手動查詢的時間 */
-function aged(rows,sec){
-  return rows.map(x=>{
-    const d=x.d;
-    if(!d||d.StopStatus!==0||d.EstimateTime==null) return x;
-    return {r:x.r,d:Object.assign({},d,{EstimateTime:Math.max(0,d.EstimateTime-sec)})};
-  });
+function lastBoard(){
+  const p=last&&store.list().find(x=>x.id===last.pid);
+  return p?Board.boardOf(p,last.rows,last.at,Date.now()):null;
 }
 function tickCountdown(){
   const p=curPair();
   if(!last||!p||last.pid!==p.id) return;
-  renderRows(aged(last.rows,(Date.now()-last.at)/1000),last.to,false);
-  if(Date.now()-last.at>3*60000) $('live').classList.add('stale');
+  const b=lastBoard(); if(!b) return;
+  renderBoard(b,false);
+  if(b.stale) $('live').classList.add('stale');
 }
 /* 依最近一班車決定多久查一次：3 分鐘內 30 秒、其他 60 秒、沒有即時資料 90 秒 */
 function refreshDelay(){
-  if(!last) return 30000;
-  const el=(Date.now()-last.at)/1000;
-  const live=last.rows.map(x=>x.d).filter(d=>d&&d.StopStatus===0&&d.EstimateTime!=null).map(d=>d.EstimateTime-el);
-  if(!live.length) return 90000;
-  return Math.min(...live)<=180?30000:60000;
+  const b=lastBoard();
+  return b?b.nextRefreshMs:30000;
 }
 
 /* 示範資料：尚未填金鑰時顯示，讓畫面不是空的 */
 function demo(p){
-  const now=Date.now();
-  const mk=(name,hops,d)=>({r:{name,hops},d});
-  renderRows([
-    mk('D2',7,{StopStatus:0,EstimateTime:420}),
-    mk('D1',6,{StopStatus:0,EstimateTime:110}),
-    mk('D3',7,{StopStatus:0,EstimateTime:960}),
-    mk('D4',9,{StopStatus:1,NextBusTime:new Date(now+40*60000).toISOString()})
-  ].sort((a,b)=>rank(a.d)-rank(b.d)),p?p.to:'下車站');
+  renderBoard(Board.demoBoard(p?p.to:'',Date.now()),true);
   $('demoNote').hidden=false; $('stamp').textContent='示範'; $('live').classList.add('stale');
 }
 
@@ -454,13 +404,15 @@ async function refresh(auto){
       p=store.setRoutes(pid,await findRoutes(p.from,p.to,onWait));
       if(!p||!stillHere()) return; /* 等待期間組合被刪除或切換了 */
     }
-    if(!p.routes||!p.routes.length){last=null; $('hero').innerHTML='<div class="board-empty">找不到同時經過這兩站的路線</div>'; showMsg('請到設定確認站名，或按「重找路線」。'); return}
-    /* 全部路線都排除了：不用查到站，省一次查詢 */
-    if(allExcluded(p)){last=null; renderRows([],p.to); showMsg(''); return}
+    /* 找不到路線、或路線全部排除了：不用查到站，省一次查詢 */
+    const pre=Board.boardOf(p,[],Date.now(),Date.now());
+    if(pre.state==='noRoutes'){last=null; renderBoard(pre,false); showMsg('請到設定確認站名，或按「重找路線」。'); return}
+    if(pre.state==='allExcluded'){last=null; renderBoard(pre,true); showMsg(''); return}
     const rows=await loadEta(p,onWait);
     if(!stillHere()) return; /* 等待期間使用者切換了組合 */
-    last={pid,rows,to:p.to,at:Date.now()};
-    renderRows(rows,p.to); stamp(); showMsg('');
+    const at=Date.now();
+    last={pid,rows,at};
+    renderBoard(Board.boardOf(curPair(),rows,at,at),true); stamp(); showMsg('');
   }catch(e){
     if(e.rate){pausedUntil=Date.now()+BACKOFF_MS; showMsg('TDX 暫時限制這組金鑰的查詢次數，約 1 分鐘後自動恢復。畫面是最後一次的資料。')}
     else showMsg(errText(e));
