@@ -124,6 +124,10 @@ const waitText=(s,why,then)=>why==='paused'?'TDX 暫時限制這組金鑰的查�
   :'為了不超過 TDX 每分鐘的查詢上限，約 '+s+' 秒後'+(then||'送出查詢')+'…';
 
 function curPair(){return store.current()}
+/* 轉乘組合目前看第幾段（1 或 2）；換組合、重新打開 App 都回到第一段，不存起來 */
+let leg=1;
+function viewPair(){return Board.legOf(curPair(),leg)}
+const regionOpts=(p,o)=>Object.assign({region:p&&p.region},o);
 function showMsg(t){$('msg').textContent=t||''; $('msg').hidden=!t}
 
 /* ---------- 使用習慣：記下「什麼時間看哪一組」，開啟時自動切到常用的那組 ----------
@@ -161,7 +165,7 @@ function usageGuess(){
 let why='last';
 function autoPick(){
   const g=usageGuess();
-  if(g){const before=(curPair()||{}).id; if(store.select(g)){why='guess'; return g!==before}}
+  if(g){const before=(curPair()||{}).id; if(store.select(g)){why='guess'; if(g!==before) leg=1; return g!==before}}
   why='last'; return false;
 }
 /* 停留在同一組超過 20 秒才算真的有在看 */
@@ -182,17 +186,36 @@ function renderChips(){
   $('pairName').textContent=p?p.name:'';
   const tip=!LS.get('bus.tip',false);
   const w=tip?'點這裡切換其他組合':why==='guess'?'通常這個時間用這組':why==='last'?'上次使用':'';
-  renderHidden(p);
+  renderHidden();
   $('pairWhy').textContent=w; $('pairWhy').hidden=!w; $('pairWhy').classList.toggle('tip',tip);
   $('pairMenu').innerHTML=list.map(x=>{const on=p&&x.id===p.id;
-    return `<button type="button" data-id="${esc(x.id)}" aria-current="${on}"><span class="mi"><span class="mn">${esc(x.name)}</span><span class="ms">${esc(x.from)} → ${esc(x.to)}</span></span>${on?CHECK:''}</button>`}).join('')
+    return `<button type="button" data-id="${esc(x.id)}" aria-current="${on}"><span class="mi"><span class="mn">${esc(x.name)}</span><span class="ms">${esc(stopsText(x))}</span></span>${on?CHECK:''}</button>`}).join('')
     +'<button type="button" class="manage" data-act="manage">新增或管理組合</button>';
-  $('boardTitle').textContent=p?Tdx.stopCore(p.from)+' 下一班進站':'下一班進站';
-  $('trip').innerHTML=p?`<div class="dot"></div><div><div class="lbl">上車</div><div class="stop">${esc(p.from)}</div></div>
-    <div class="rail"></div><div></div>
-    <div class="dot end"></div><div><div class="lbl">下車</div><div class="stop">${esc(p.to)}</div></div>`:'';
+  const v=viewPair();
+  $('boardTitle').textContent=!p?'下一班進站':(p.via?(leg===2?'第二段・':'第一段・'):'')+Tdx.stopCore(v.from)+' 下一班進站';
+  const stop=(cls,lbl,name)=>`<div class="dot ${cls}"></div><div class="${cls==='past'?'past':''}"><div class="lbl">${lbl}</div><div class="stop">${esc(name)}</div></div>`;
+  $('trip').innerHTML=!p?'':!p.via?`${stop('','上車',p.from)}<div class="rail"></div><div></div>${stop('end','下車',p.to)}`
+    :leg===2?`${stop('past','上車（已搭過）',p.from)}<div class="rail off"></div><div></div>${stop('via','現在在這裡轉乘',p.via)}<div class="rail"></div><div></div>${stop('end','下車',p.to)}`
+    :`${stop('','上車',p.from)}<div class="rail"></div><div></div>${stop('via','轉乘',p.via)}<div class="rail off"></div><div></div>${stop('end','下車',p.to)}`;
+  const lb=$('legBtn');
+  lb.hidden=!p||!p.via;
+  if(p&&p.via){
+    lb.classList.toggle('back',leg===2);
+    lb.innerHTML=leg===2?'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>回第一段'
+      :`到${esc(p.via)}了，看下一段<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>`;
+  }
+  if(!p||!p.via||leg===2) $('legNote').hidden=true;
 }
-function loadPair(){$('hero').innerHTML='<div class="board-empty">載入中…</div>'; $('list').hidden=true; $('otherTitle').hidden=true; refresh(); viewStart()}
+const stopsText=p=>p.via?p.from+' → '+p.via+' → '+p.to:p.from+' → '+p.to;
+$('legBtn').addEventListener('click',()=>{
+  const p=curPair(); if(!p||!p.via) return;
+  leg=leg===2?1:2; renderChips();
+  /* 兩段的到站資料是一起查的，直接用手上的資料重畫，不另外查詢 */
+  if(last&&last.pid===p.id){const b=lastBoard(); if(b){renderBoard(b,true); renderLegNote()}}
+  else refresh();
+  window.scrollTo(0,0);
+});
+function loadPair(){leg=1; renderChips(); $('hero').innerHTML='<div class="board-empty">載入中…</div>'; $('list').hidden=true; $('otherTitle').hidden=true; refresh(); viewStart()}
 $('pairBtn').addEventListener('click',()=>{
   const open=$('pairMenu').hidden;
   $('pairMenu').hidden=!open; $('pairBtn').setAttribute('aria-expanded',String(open));
@@ -214,11 +237,11 @@ document.addEventListener('click',e=>{if(!$('pairMenu').hidden&&!$('pairBox').co
 function exOf(p){return p?p.exclude:[]}
 function routeNames(p){return p&&Array.isArray(p.routes)?[...new Set(p.routes.map(r=>r.name))]:[]}
 function hiddenCount(p){const ex=exOf(p); return routeNames(p).filter(n=>ex.includes(n)).length}
-function renderHidden(p){
-  const n=hiddenCount(p), el=$('hidNote');
+function renderHidden(){
+  const n=hiddenCount(viewPair()), el=$('hidNote');
   el.hidden=!n; el.textContent=n?`已隱藏 ${n} 條路線 · 修改`:'';
 }
-$('hidNote').addEventListener('click',()=>{const p=curPair(); if(p) openSettings(true,'ex-'+p.id)});
+$('hidNote').addEventListener('click',()=>{const p=curPair(); if(p) openSettings(true,(p.via&&leg===2?'ex2-':'ex-')+p.id)});
 
 /* 把看板內容畫出來；所有文字都在這裡跳脫。scene=true 才更新 3D 光點（倒數時 3D 自己會動） */
 const EMPTY_TEXT={noBus:'目前沒有車',allExcluded:'可搭的路線都已排除',noRoutes:'找不到同時經過這兩站的路線'};
@@ -227,7 +250,7 @@ function etaHtml(e,cls,hero){
     :`<div class="${cls} word ${e.tone}${hero&&e.tone==='hot'?' blink':''}">${esc(e.text)}</div>`;
 }
 function renderBoard(b,scene){
-  renderHidden(curPair());
+  renderHidden();
   if(scene&&window.setBuses) window.setBuses(b.buses);
   if(b.state!=='ok'){
     $('hero').innerHTML=`<div class="board-empty">${esc(EMPTY_TEXT[b.state])}</div>`;$('list').hidden=true;$('otherTitle').hidden=true;return;
@@ -244,13 +267,19 @@ let last=null; /* {pid,rows,at} 最後一次成功取得的原始到站資料 */
 let lastTry=0; /* 最後一次嘗試自動/手動查詢的時間 */
 function lastBoard(){
   const p=last&&store.list().find(x=>x.id===last.pid);
-  return p?Board.boardOf(p,last.rows,last.at,Date.now()):null;
+  return p?Board.boardOf(Board.legOf(p,leg),last.rows,last.at,Date.now()):null;
+}
+/* 看第一段時，第二段沒車才顯示一行警告 */
+function renderLegNote(){
+  const p=curPair(), el=$('legNote');
+  const t=p&&p.via&&leg===1&&last&&last.pid===p.id?Board.secondLegNote(p,last.rows,last.at,Date.now()):null;
+  el.textContent=t||''; el.hidden=!t;
 }
 function tickCountdown(){
   const p=curPair();
   if(!last||!p||last.pid!==p.id) return;
   const b=lastBoard(); if(!b) return;
-  renderBoard(b,false);
+  renderBoard(b,false); renderLegNote();
   if(b.stale) $('live').classList.add('stale');
 }
 /* 依最近一班車決定多久查一次：3 分鐘內 30 秒、其他 60 秒、沒有即時資料 90 秒 */
@@ -263,6 +292,28 @@ function refreshDelay(){
 function demo(p){
   renderBoard(Board.demoBoard(p?p.to:'',Date.now()),true);
   $('demoNote').hidden=false; $('stamp').textContent='示範'; $('live').classList.add('stale');
+}
+
+/* 找路線：查經過上車站的路線算出直達；轉乘組合再查經過下車站的路線，兩段一起重找，順便看看是不是有直達了。
+   查詢次數和以前一樣：直達組合 1 次、轉乘組合 2 次（乘上生活圈的縣市數）。
+   回傳 {routes, routes2, direct}；自動更新額度不夠回傳 null */
+async function resolveRoutes(p,opts){
+  const o=regionOpts(p,opts);
+  const rawFrom=await tdx.routesThrough(p.from,o); if(rawFrom===null) return null;
+  const direct=Routes.direct(rawFrom,p.from,p.to);
+  if(!p.via) return {routes:direct};
+  const rawTo=await tdx.routesThrough(p.to,o); if(rawTo===null) return null;
+  const c=Routes.transfers(rawFrom,rawTo,p.from,p.to,{via:p.via})[0];
+  return {routes:c?c.routes1:[],routes2:c?c.routes2:[],direct};
+}
+/* 沒有直達時找轉乘站候選（最多 3 個）。回傳 {direct, cands} */
+async function findTransfers(region,from,to,opts){
+  const o=Object.assign({region},opts);
+  const rawFrom=await tdx.routesThrough(from,o);
+  const direct=Routes.direct(rawFrom,from,to);
+  if(direct.length) return {direct,cands:[]};
+  const rawTo=await tdx.routesThrough(to,o);
+  return {direct,cands:Routes.transfers(rawFrom,rawTo,from,to)};
 }
 
 /* auto=true：自動更新，額度不夠就跳過這輪；auto=false：使用者操作，額度不夠就排隊等 */
@@ -280,21 +331,23 @@ async function refresh(auto){
   try{
     if(store.needsRoutes(pid)){
       if(!last||last.pid!==pid) $('hero').innerHTML='<div class="board-empty">正在找可搭的路線…</div>';
-      const found=await tdx.findRoutes(p.from,p.to,opts);
+      const found=await resolveRoutes(p,opts);
       if(found===null) return skipped();
-      p=store.setRoutes(pid,found);
+      p=store.setRoutes(pid,found.routes,found);
       if(!p||!stillHere()) return; /* 等待期間組合被刪除或切換了 */
     }
-    /* 找不到路線、或路線全部排除了：不用查到站，省一次查詢 */
-    const pre=Board.boardOf(p,[],Date.now(),Date.now());
-    if(pre.state==='noRoutes'){last=null; renderBoard(pre,false); showMsg('請到設定確認站名，或按「重找路線」。'); return}
-    if(pre.state==='allExcluded'){last=null; renderBoard(pre,true); showMsg(''); return}
-    const rows=await tdx.arrivals(p.routes,opts);
+    /* 這一段找不到路線、或路線全部排除了：不用查到站，省一次查詢 */
+    const pre=Board.boardOf(Board.legOf(p,leg),[],Date.now(),Date.now());
+    if(pre.state==='noRoutes'){last=null; renderBoard(pre,false); $('legNote').hidden=true;
+      showMsg(p.via?'這一段找不到路線，請到設定按「換轉乘站」或「重找路線」。':'請到設定確認站名，或按「重找路線」。'); return}
+    if(pre.state==='allExcluded'){last=null; renderBoard(pre,true); $('legNote').hidden=true; showMsg(''); return}
+    /* 轉乘組合兩段的站牌一起查（同縣市合併成一次），切換段落時不用再查 */
+    const rows=await tdx.arrivals(p.via?p.routes.concat(p.routes2||[]):p.routes,opts);
     if(rows===null) return skipped();
     if(!stillHere()) return; /* 等待期間使用者切換了組合 */
     const at=Date.now();
     last={pid,rows,at}; lastTry=at; /* 從拿到資料起算下次更新（排隊等很久時不會一查完又馬上再查） */
-    renderBoard(Board.boardOf(curPair(),rows,at,at),true); stamp(); showMsg('');
+    renderBoard(lastBoard(),true); renderLegNote(); stamp(); showMsg('');
   }catch(e){
     showMsg(e.message+(e.kind==='rate'?'畫面是最後一次的資料。':''));
     $('live').classList.add('stale');
@@ -308,7 +361,7 @@ async function refresh(auto){
 function openSettings(on,focusId){
   $('board').hidden=on; $('settings').hidden=!on; closeMenu();
   if(on){
-    const k=tdx.key(); $('cid').value=k.id; $('csec').value=k.secret; renderPairs(); renderUsage();
+    const k=tdx.key(); $('cid').value=k.id; $('csec').value=k.secret; renderPairs(); renderUsage(); renderRegions(); $('viaPick').innerHTML='';
     const f=focusId&&$(focusId);
     if(f){f.scrollIntoView({block:'center'}); f.focus({preventScroll:true})} else window.scrollTo(0,0);
   } else {renderChips(); refresh(); viewStart()}
@@ -328,9 +381,10 @@ function renderGuide(hasKey,hasPair){
       <button class="btn primary" type="button" id="gKey">我拿到了，去貼上金鑰</button>
       <div class="hint">金鑰只存在你這支手機的瀏覽器裡，不會上傳，也不會分享給別人。申請免費。</div></div>`;
   const s2=(!hasKey||hasPair)?'':`<div class="step-b">
-      <div>搜尋你要上車和下車的站名。程式會自動找出所有同方向、會經過這兩站的路線，不用一條一條查。</div>
+      <div>先選生活圈（雙北、台中、高雄……），再搜尋你要上車和下車的站名。程式會自動找出所有同方向、會經過這兩站的路線，不用一條一條查。</div>
+      <div>沒有直達車時，會列出可以轉一次車的轉乘站讓你選。</div>
       <button class="btn primary" type="button" id="gPair">新增上下車站</button>
-      <div class="hint">可以存好幾組，例如「上班」「下班」。點看板上方的組合名稱就能切換，用幾次後會依時段自動打開常用的那組。</div></div>`;
+      <div class="hint">可以存好幾組，例如「上班」「下班」「出差」，每組各自選生活圈。點看板上方的組合名稱就能切換，用幾次後會依時段自動打開常用的那組。</div></div>`;
   g.innerHTML=`<h2>三步驟開始使用</h2>
     <p class="lead">設定一次就好，之後打開就直接看到哪幾班車能到。</p>
     <ol class="steps">
@@ -364,31 +418,86 @@ $('btnSaveKey').onclick=async()=>{
 const addOpts={onWait:(s,why)=>{$('addStatus').textContent=waitText(s,why,'繼續')}};
 const setErr=e=>{$('addStatus').textContent=e.kind==='nokey'?'請先儲存金鑰。':e.message};
 
+const regionName=id=>Regions.get(id).name;
+function chips(p,leg2){
+  const names=routeNames(leg2?Board.legOf(p,2):p), ex=leg2?p.exclude2:p.exclude;
+  return `<div class="xchips">${names.map(n=>`<button type="button" class="xchip" data-act="ex" data-leg="${leg2?2:1}" data-id="${esc(p.id)}" data-n="${esc(n)}" aria-pressed="${ex.includes(n)}">${esc(n)}</button>`).join('')}</div>`;
+}
 function renderPairs(){
   const list=store.list();
+  /* 只用一個生活圈時不顯示生活圈標籤，畫面和以前一樣 */
+  const manyRegions=new Set(list.map(p=>p.region)).size>1;
   $('pairList').innerHTML=list.length?list.map(p=>{
-    const names=routeNames(p), ex=exOf(p);
-    const exw=names.length?`<div class="exw" id="ex-${esc(p.id)}" tabindex="-1"><div class="small">不搭的路線：點一下排除，看板上就不會顯示（只影響這一組）</div>
-      <div class="xchips">${names.map(n=>`<button type="button" class="xchip" data-act="ex" data-id="${esc(p.id)}" data-n="${esc(n)}" aria-pressed="${ex.includes(n)}">${esc(n)}</button>`).join('')}</div></div>`:'';
-    return `<div class="pair"><div><b>${esc(p.name)}</b><div class="small">${esc(p.from)} → ${esc(p.to)}${p.routes?` · ${names.length} 條路線`:''}${ex.length&&names.length?`，已排除 ${hiddenCount(p)} 條`:''}</div></div>
-    <div class="btns"><button class="btn" type="button" data-act="re" data-id="${esc(p.id)}">重找路線</button><button class="btn danger" type="button" data-act="del" data-id="${esc(p.id)}">刪除</button></div>${exw}</div>`}).join(''):'<div class="small">目前沒有組合。</div>';
+    const n1=routeNames(p).length, n2=p.via?routeNames(Board.legOf(p,2)).length:0;
+    const tags=(manyRegions?`<span class="ptag">${esc(regionName(p.region))}</span>`:'')+(p.via?'<span class="ptag tr">轉乘</span>':'');
+    const hid=hiddenCount(p)+(p.via?hiddenCount(Board.legOf(p,2)):0);
+    const info=p.via?`${esc(stopsText(p))}${p.routes?` · 第一段 ${n1} 條、第二段 ${n2} 條`:''}`
+      :`${esc(stopsText(p))}${p.routes?` · ${n1} 條路線`:''}`;
+    let exw='';
+    if(p.via&&(n1||n2)) exw=`<div class="exw" id="ex-${esc(p.id)}" tabindex="-1"><div class="small">不搭的路線：點一下排除，看板上就不會顯示（只影響這一組）</div>
+      ${n1?`<div class="legt">第一段・${esc(p.from)} → ${esc(p.via)}</div>${chips(p,false)}`:''}
+      <div id="ex2-${esc(p.id)}" tabindex="-1" style="display:flex;flex-direction:column;gap:8px">${n2?`<div class="legt">第二段・${esc(p.via)} → ${esc(p.to)}</div>${chips(p,true)}`:''}</div></div>`;
+    else if(n1) exw=`<div class="exw" id="ex-${esc(p.id)}" tabindex="-1"><div class="small">不搭的路線：點一下排除，看板上就不會顯示（只影響這一組）</div>${chips(p,false)}</div>`;
+    const ask=p.via&&p.direct?`<div class="exw"><div class="ask"><span>現在有直達車了（${new Set(p.direct.map(r=>r.name)).size} 條），要改成直達嗎？</span>
+      <span class="btns"><button class="btn primary" type="button" data-act="direct" data-id="${esc(p.id)}">改成直達</button><button class="btn ghost" type="button" data-act="keep" data-id="${esc(p.id)}">維持轉乘</button></span></div></div>`:'';
+    /* 轉乘組合可換轉乘站；直達組合找不到路線時可找轉乘站 */
+    const viaBtn=p.via?'換轉乘站':(p.routes&&!p.routes.length?'找轉乘站':'');
+    return `<div class="pair"><div><b>${esc(p.name)}</b>${tags}<div class="small">${info}${hid?`，已排除 ${hid} 條`:''}</div></div>
+    <div class="btns"><button class="btn" type="button" data-act="re" data-id="${esc(p.id)}">重找路線</button>${viaBtn?`<button class="btn" type="button" data-act="via" data-id="${esc(p.id)}">${viaBtn}</button>`:''}<button class="btn danger" type="button" data-act="del" data-id="${esc(p.id)}">刪除</button></div>${ask}${exw}
+    <div class="exw vp" id="vp-${esc(p.id)}"></div></div>`}).join(''):'<div class="small">目前沒有組合。</div>';
+}
+/* 轉乘站候選清單：選一個再按確定。onPick(候選) */
+let pickSeq=0;
+function renderPicker(el,cands,lead,confirm,onPick){
+  const nm='vp'+(++pickSeq);
+  el.innerHTML=`<div class="note">${esc(lead)}</div>
+    <fieldset class="cands"><legend>轉乘站（站數少的在前）</legend>
+    ${cands.map((c,i)=>`<label class="cand"><input type="radio" name="${nm}" value="${i}"${i===0?' checked':''}>
+      <span><b>${esc(c.via)}</b><small>共 ${c.hops} 站・第一段 ${c.hops1} 站／第二段 ${c.hops2} 站</small><small>第一段 ${c.n1} 條路線・第二段 ${c.n2} 條路線</small></span></label>`).join('')}</fieldset>
+    <button class="btn primary" type="button">${esc(confirm(cands[0]))}</button>
+    <div class="small">只列出兩段站牌相距 ${Routes.MAX_DIST} 公尺內、轉一次車的轉乘站。</div>`;
+  const btn=el.querySelector('button.primary');
+  const sel=()=>cands[+(el.querySelector('input:checked')||{}).value||0];
+  el.querySelectorAll('input').forEach(x=>x.onchange=()=>{btn.textContent=confirm(sel())});
+  btn.onclick=()=>{const c=sel(); el.innerHTML=''; onPick(c)};
 }
 $('pairList').addEventListener('click',async e=>{
-  const b=e.target.closest('button'); if(!b)return;
+  const b=e.target.closest('button'); if(!b||!b.dataset.act)return;
   const p=store.list().find(x=>x.id===b.dataset.id); if(!p)return;
+  const keepScroll=()=>{const y=window.scrollY; renderPairs(); window.scrollTo(0,y)};
   if(b.dataset.act==='ex'){
-    store.toggleExclude(p.id,b.dataset.n);
-    const y=window.scrollY; renderPairs(); window.scrollTo(0,y);
-    return;
+    store.toggleExclude(p.id,b.dataset.n,+b.dataset.leg);
+    keepScroll(); return;
   }
+  if(b.dataset.act==='direct'){store.useDirect(p.id); if(last&&last.pid===p.id) last=null; keepScroll(); return}
+  if(b.dataset.act==='keep'){store.dismissDirect(p.id); keepScroll(); return}
   if(b.dataset.act==='del'){
     if(b.dataset.confirm!=='1'){b.dataset.confirm='1'; b.textContent='確定刪除'; return}
     store.remove(p.id);
     LS.set(USAGE_KEY,usageLoad()); /* 這組的使用紀錄一起刪掉 */
     renderPairs(); renderUsage();
+  }else if(b.dataset.act==='via'){
+    b.textContent='尋找中…';
+    try{
+      const o=Object.assign({region:p.region},addOpts);
+      const raw1=await tdx.routesThrough(p.from,o), raw2=await tdx.routesThrough(p.to,o);
+      const cands=Routes.transfers(raw1,raw2,p.from,p.to);
+      renderPairs();
+      const el=$('vp-'+p.id); if(!el) return;
+      if(!cands.length){el.innerHTML='<div class="note">找不到只轉一次車的轉乘站。</div>'; return}
+      renderPicker(el,cands,`${p.from} → ${p.to}：可以在下面這些站轉一次車`,c=>'改在'+c.via+'轉乘',c=>{
+        store.setVia(p.id,c.via,c.routes1,c.routes2); if(last&&last.pid===p.id) last=null;
+        renderPairs(); $('addStatus').textContent='';
+      });
+      el.scrollIntoView({block:'nearest'});
+    }catch(err){setErr(err); renderPairs()}
   }else{
     b.textContent='尋找中…';
-    try{store.setRoutes(p.id,await tdx.findRoutes(p.from,p.to,addOpts)); $('addStatus').textContent=''; if(last&&last.pid===p.id) last=null}
+    try{
+      const r=await resolveRoutes(p,addOpts);
+      store.setRoutes(p.id,r.routes,r); $('addStatus').textContent=''; if(last&&last.pid===p.id) last=null;
+      if(!p.via&&!r.routes.length) $('addStatus').textContent=`「${p.name}」找不到直達的路線，可以按「找轉乘站」。`;
+    }
     catch(err){setErr(err)}
     renderPairs();
   }
@@ -405,12 +514,22 @@ $('btnClearUsage').onclick=()=>{
   LS.set(USAGE_KEY,[]); renderUsage();
 };
 
+/* 生活圈：預設用最後新增那組的生活圈；換生活圈時站名要重新搜尋 */
+function renderRegions(){
+  const list=store.list(), def=list.length?list[list.length-1].region:Regions.DEFAULT;
+  $('pRegion').innerHTML=Regions.LIST.map(r=>`<option value="${r.id}"${r.id===def?' selected':''}>${esc(r.name)}${r.note?'（'+esc(r.note)+'）':''}</option>`).join('');
+}
+renderRegions();
+$('pRegion').onchange=()=>{
+  for(const id of ['selFrom','selTo']){$(id).hidden=true; $(id).innerHTML=''}
+  $('viaPick').innerHTML=''; $('addStatus').textContent='';
+};
 function bindSearch(btn,kw,sel){
   $(btn).onclick=async()=>{
     const k=$(kw).value.trim(); if(!k||$(btn).disabled)return;
     $(btn).textContent='搜尋中'; $(btn).disabled=true;
     try{
-      const list=await tdx.searchStops(k,{onWait:s=>{$(btn).textContent='等 '+s+' 秒'}}); /* 同關鍵字只查一次 */
+      const list=await tdx.searchStops(k,{region:$('pRegion').value,onWait:s=>{$(btn).textContent='等 '+s+' 秒'}}); /* 同生活圈同關鍵字只查一次 */
       $(sel).innerHTML=list.length?list.map(n=>`<option>${esc(n)}</option>`).join(''):'<option value="">找不到這個站名</option>';
       $(sel).hidden=false; $('addStatus').textContent='';
     }catch(e){setErr(e)}
@@ -424,12 +543,26 @@ $('btnAdd').onclick=async()=>{
   const name=$('pName').value.trim()||'組合 '+(store.list().length+1);
   if(!from||!to){$('addStatus').textContent='請先搜尋並選擇上車站和下車站。';return}
   if(store.list().length>=PairStore.PAIR_MAX){$('addStatus').textContent='最多只能存 '+PairStore.PAIR_MAX+' 組，請先刪除不用的組合。';return} /* 先擋，不浪費查詢 */
+  const region=$('pRegion').value;
+  $('viaPick').innerHTML='';
   $('addStatus').textContent='正在找出符合的路線…';
   try{
-    const r=await tdx.findRoutes(from,to,addOpts);
-    store.add(name,from,to,r);
-    $('addStatus').textContent=r.length?`已新增，找到 ${r.length} 條路線：${[...new Set(r.map(x=>x.name))].join('、')}。有不想搭的（例如比較繞），可以在上方這一組裡排除。`:'已新增，但目前找不到同時經過這兩站的路線。';
-    renderPairs();
+    const {direct:r,cands}=await findTransfers(region,from,to,addOpts);
+    if(r.length||!cands.length){
+      store.add(name,from,to,r,{region});
+      $('addStatus').textContent=r.length?`已新增，找到 ${r.length} 條路線：${[...new Set(r.map(x=>x.name))].join('、')}。有不想搭的（例如比較繞），可以在上方這一組裡排除。`
+        :'已新增，但目前找不到直達、也找不到只轉一次車的路線。';
+      renderPairs(); return;
+    }
+    /* 沒有直達：列出轉乘站，選了才新增 */
+    $('addStatus').textContent='';
+    renderPicker($('viaPick'),cands,`${from} → ${to} 沒有直達的公車。可以在下面這些站轉一次車：`,c=>'用'+c.via+'轉乘，新增組合',c=>{
+      try{
+        store.add(name,from,to,c.routes1,{region,via:c.via,routes2:c.routes2});
+        $('addStatus').textContent=`已新增轉乘組合：在${c.via}轉乘。看板會先顯示第一段，到了${c.via}再按「看下一段」。`;
+        renderPairs();
+      }catch(e){$('addStatus').textContent=e.message}
+    });
   }catch(e){setErr(e)}
 };
 
@@ -463,8 +596,10 @@ document.addEventListener('visibilitychange',()=>{
   const reopened=hiddenAt&&Date.now()-hiddenAt>=REOPEN_MS; hiddenAt=0;
   viewStart();
   if(reopened&&$('settings').hidden){
+    const back=leg!==1; leg=1; /* 重新打開時，轉乘組合回到第一段 */
     const changed=autoPick(); renderChips();
     if(changed){loadPair(); return}
+    if(back){const b=lastBoard(); if(b){renderBoard(b,true); renderLegNote()}}
   }
   /* 切回來時資料超過 20 秒才重查，其餘交給倒數 */
   if(onBoard()&&Date.now()-lastTry>20000) refresh(true); else tickCountdown();

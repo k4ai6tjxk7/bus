@@ -80,12 +80,18 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .trip .rail{width:3px;background:var(--route);margin-left:7.5px;height:22px;opacity:.55;border-radius:2px}
 .trip .lbl{font-size:12px;color:var(--muted);letter-spacing:.1em}
 .trip .stop{font-size:18px;font-weight:700;line-height:1.3;min-width:0;overflow-wrap:anywhere}
+.trip .dot.via{border-color:var(--led);background:var(--board)}
+.trip .rail.off{opacity:.2}
+.trip .past{opacity:.55}
+.trip .past .stop{font-size:15px;font-weight:500}
 
 /* LED 看板 */
 .board{background:var(--board);border:1px solid var(--board-edge);border-radius:20px;padding:18px 18px 16px;color:var(--board-ink);position:relative;overflow:hidden}
 .board::before{content:"";position:absolute;inset:0;pointer-events:none;
   background-image:radial-gradient(rgba(255,255,255,.035) 1px,transparent 1.2px);background-size:5px 5px}
-.board-head{display:flex;justify-content:space-between;align-items:center;font-size:12px;letter-spacing:.14em;position:relative}
+.board-head{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:12px;letter-spacing:.14em;position:relative}
+.board-head>span:first-child{min-width:0}
+.live{flex:none}
 .live{display:flex;align-items:center;gap:6px;color:var(--board-ink);letter-spacing:.04em;font-variant-numeric:tabular-nums}
 .live i{width:7px;height:7px;border-radius:50%;background:#3ad07a;box-shadow:0 0 8px rgba(58,208,122,.7)}
 .live.stale i{background:var(--led-off);box-shadow:none}
@@ -128,6 +134,11 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .list .empty{padding:20px 16px;color:var(--muted);font-size:14px;text-align:center}
 
 .note{background:var(--warn-bg);color:var(--warn-ink);border-radius:12px;padding:10px 14px;font-size:14px}
+
+/* 轉乘：切換第一段／第二段 */
+.legbtn{display:flex;align-items:center;justify-content:center;gap:8px;min-height:48px;border-radius:12px;font-weight:700;background:var(--ink);color:var(--bg);padding:8px 16px;text-align:center}
+.legbtn.back{background:var(--surface);color:var(--ink);border:1px solid var(--line);font-weight:500}
+.legbtn svg{width:18px;height:18px;flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .demo{font-size:12px;color:var(--muted);text-align:center}
 
 /* 新手引導：只在還沒設定好時出現 */
@@ -184,6 +195,21 @@ input,select{font:inherit;font-size:16px;color:var(--ink);background:var(--bg);b
 .xchips{display:flex;flex-wrap:wrap;gap:6px}
 .xchip{padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--bg);font-size:14px;font-weight:500}
 .xchip[aria-pressed="true"]{color:var(--led-hot);border-color:var(--led-hot);text-decoration:line-through;background:none}
+.legt{font-size:12px;color:var(--muted);letter-spacing:.06em;margin-top:2px}
+.ptag{display:inline-block;font-size:11.5px;padding:0 8px;border-radius:999px;background:var(--bg);border:1px solid var(--line);color:var(--muted);font-weight:500;margin-left:6px;vertical-align:2px}
+.ptag.tr{background:var(--warn-bg);color:var(--warn-ink);border-color:transparent}
+.ask{background:var(--bg);border:1px solid var(--route);border-radius:12px;padding:10px 12px;font-size:14px;display:flex;flex-direction:column;gap:8px}
+
+/* 轉乘站候選 */
+.vp{display:flex;flex-direction:column;gap:10px}
+.vp:empty{display:none}
+.cands{display:flex;flex-direction:column;gap:8px;margin:0;padding:0;border:0}
+.cands legend{font-size:12px;color:var(--muted);letter-spacing:.1em;padding:0;margin-bottom:6px}
+.cand{display:grid;grid-template-columns:22px 1fr;column-gap:10px;align-items:start;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--bg);color:var(--ink);font-size:15px;cursor:pointer}
+.cand:has(input:checked){border:2px solid var(--route);padding:11px 13px}
+.cand input{width:18px;height:18px;margin:3px 0 0;accent-color:var(--route);padding:0}
+.cand b{display:block;font-size:16px}
+.cand small{display:block;font-size:12.5px;color:var(--muted)}
 </style>
 </head>
 <body>
@@ -208,6 +234,7 @@ input,select{font:inherit;font-size:16px;color:var(--ink);background:var(--bg);b
     <div class="trip" id="trip"></div>
     <section class="guide" id="guide" hidden></section>
     <div class="note" id="msg" hidden></div>
+    <div class="note" id="legNote" hidden></div>
     <div class="board" id="led">
       <div class="board-head"><span id="boardTitle">下一班進站</span><span class="live stale" id="live"><i></i><span id="stamp">--:--:--</span></span></div>
       <div class="scene" id="scene"><div class="tags" id="tags"></div></div>
@@ -216,6 +243,7 @@ input,select{font:inherit;font-size:16px;color:var(--ink);background:var(--bg);b
     <div class="sect" id="otherTitle" hidden><span>其他可搭路線</span><span class="wait">還要等</span></div>
     <div class="list" id="list" hidden></div>
     <button class="hidnote" id="hidNote" type="button" hidden></button>
+    <button class="legbtn" id="legBtn" type="button" hidden></button>
     <div class="demo" id="demoNote" hidden>看板目前是示範畫面，完成上方步驟後就會顯示即時到站。</div>
   </div>
 
@@ -244,6 +272,7 @@ input,select{font:inherit;font-size:16px;color:var(--ink);background:var(--bg);b
     <section class="panel">
       <h2>新增組合</h2>
       <label>名稱<input id="pName" placeholder="例如：上班" maxlength="40"></label>
+      <label>生活圈<select id="pRegion"></select></label>
       <label>上車站
         <span class="inline"><input id="kwFrom" placeholder="輸入站名關鍵字"><button class="btn" id="sFrom" type="button">搜尋</button></span>
         <select id="selFrom" hidden></select>
@@ -254,14 +283,17 @@ input,select{font:inherit;font-size:16px;color:var(--ink);background:var(--bg);b
       </label>
       <button class="btn primary" id="btnAdd" type="button">新增並找出路線</button>
       <div class="small" id="addStatus"></div>
+      <div class="vp" id="viaPick"></div>
     </section>
   </div>
 </div>
 
 <script src="three.min.js"></script>
-<script src="pairs.js?v=20261106a"></script>
-<script src="board.js?v=20261106b"></script>
-<script src="tdx.js?v=20261106d"></script>
-<script src="app.js?v=20261106d"></script>
+<script src="regions.js?v=20261106a"></script>
+<script src="routes.js?v=20261106a"></script>
+<script src="pairs.js?v=20261106b"></script>
+<script src="board.js?v=20261106c"></script>
+<script src="tdx.js?v=20261106e"></script>
+<script src="app.js?v=20261106e"></script>
 </body>
 </html>

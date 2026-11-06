@@ -142,7 +142,7 @@ test('金鑰錯：saveKey 丟 auth；沒填完整丟 nokey；成功會存起來'
 test('篩選字串的單引號會跳脫', async()=>{
   const {tdx,sent}=setup(ok([]));
   await tdx.searchStops("O'Hare");
-  await tdx.findRoutes("甲'站(台北)","乙站");
+  await tdx.routesThrough("甲'站(台北)");
   await tdx.arrivals([{city:'Taipei',stop:"S'1"}]);
   const urls=sent.filter(isData).map(x=>x.url);
   assert.ok(urls[0].includes("contains(StopName/Zh_tw,'O''Hare')"));
@@ -150,34 +150,38 @@ test('篩選字串的單引號會跳脫', async()=>{
   assert.ok(urls[4].includes("StopUID eq 'S''1'"));
 });
 
-test('每個操作花的額度：搜尋 2、找路線 2、查到站依縣市數；搜尋同關鍵字不重查', async()=>{
+test('每個操作花的額度：搜尋 2、經過某站的路線 2、查到站依縣市數；搜尋同關鍵字不重查', async()=>{
   const {tdx,sent}=setup(ok([]),{'bus.tok':{v:'T',exp:1_000_000_000_000+864e5}});
   await tdx.searchStops('甲'); assert.equal(sent.length,2);
   await tdx.searchStops('甲'); assert.equal(sent.length,2);
-  await tdx.findRoutes('甲站','乙站'); assert.equal(sent.length,4);
+  await tdx.routesThrough('甲站'); assert.equal(sent.length,4);
   await tdx.arrivals([{city:'Taipei',stop:'S1'},{city:'Taipei',stop:'S2'}]); assert.equal(sent.length,5);
   await tdx.arrivals([{city:'Taipei',stop:'S1'},{city:'NewTaipei',stop:'N1'}]); assert.equal(sent.length,7);
   assert.deepEqual(await tdx.arrivals([]),[]); assert.equal(sent.length,7);
 });
 
-test('找路線：只留先經過上車站、再經過下車站的同方向路線，取站數最少', async()=>{
-  const st=(...n)=>n.map((x,i)=>({StopUID:'U'+x+i,StopName:{Zh_tw:x}}));
-  const {tdx}=setup(url=>{
-    if(url.includes('openid-connect')) return TOKEN;
-    if(url.includes('NewTaipei')) return res(200,[]);
-    return res(200,[
-      {RouteUID:'R1',RouteName:{Zh_tw:'L1'},Direction:0,Stops:st('甲站','中','乙站')},
-      {RouteUID:'R1',RouteName:{Zh_tw:'L1'},Direction:1,Stops:st('乙站','中','甲站')},
-      {RouteUID:'R2',RouteName:{Zh_tw:'L2'},Direction:0,Stops:st('甲 站','乙站')},
-      {RouteUID:'R3',RouteName:{Zh_tw:'壞'},Direction:0,Stops:null},
-      null]);
-  });
-  const r=await tdx.findRoutes('甲站','乙站');
-  assert.deepEqual(r.map(x=>[x.name,x.dir,x.hops]),[['L1',0,2],['L2',0,1]]);
+test('經過某站的路線：加上 _city，略過不是物件的資料', async()=>{
+  const {tdx,sent}=setup(url=>url.includes('openid-connect')?TOKEN:res(200,url.includes('NewTaipei')?[{RouteUID:'N'}]:[{RouteUID:'T'},null,'x']));
+  const rows=await tdx.routesThrough('甲站(台北)');
+  assert.deepEqual(rows,[{RouteUID:'T',_city:'Taipei'},{RouteUID:'N',_city:'NewTaipei'}]);
+  assert.ok(sent.filter(isData).every(x=>x.url.includes("contains(s/StopName/Zh_tw,'甲站')")));
+});
+
+test('生活圈：只查那個生活圈的縣市；不認得的生活圈當成雙北；搜尋快取分生活圈', async()=>{
+  const {tdx,sent}=setup(ok([{StopName:{Zh_tw:'壬站'}}]),{'bus.tok':{v:'T',exp:1_000_000_000_000+864e5}});
+  await tdx.searchStops('台中',{region:'taichung'});
+  assert.deepEqual(sent.map(x=>x.url.split('?')[0].split('/').pop()),['Taichung']);
+  await tdx.searchStops('台中',{region:'taichung'}); assert.equal(sent.length,1);
+  await tdx.searchStops('台中',{region:'hsinchu'}); assert.equal(sent.length,3);
+  assert.deepEqual(sent.slice(1).map(x=>x.url.split('?')[0].split('/').pop()),['Hsinchu','HsinchuCounty']);
+  await tdx.routesThrough('甲站',{region:'不存在'});
+  assert.deepEqual(sent.slice(3).map(x=>x.url.split('?')[0].split('/').pop()),['Taipei','NewTaipei']);
+  await tdx.arrivals([{city:'Kaohsiung',stop:'K1'}]);
+  assert.ok(sent[5].url.includes('/EstimatedTimeOfArrival/City/Kaohsiung?'));
 });
 
 test('查到站：加上 _city，略過不是物件的資料', async()=>{
   const {tdx}=setup(ok([{StopUID:'S1',RouteUID:'R'},null,'x']));
-  const rows=await tdx.arrivals([{city:'Taipei',stop:'S1'},{city:'Kaohsiung',stop:'K'}]);
+  const rows=await tdx.arrivals([{city:'Taipei',stop:'S1'},{city:'Mars',stop:'K'}]);
   assert.deepEqual(rows,[{StopUID:'S1',RouteUID:'R',_city:'Taipei'}]);
 });

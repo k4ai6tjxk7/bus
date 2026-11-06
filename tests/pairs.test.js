@@ -31,7 +31,7 @@ test('重複 id：只留第一組', ()=>{
 test('路線格式錯：保留組合，路線清掉等重找', ()=>{
   const {store}=make({'bus.pairs':[
     pair('a',{routes:'壞'}),
-    pair('b',{routes:[route('1'),route('2',{city:'Kaohsiung'})]}),
+    pair('b',{routes:[route('1'),route('2',{city:'Mars'})]}),
     pair('c',{routes:[route('1',{hops:-1})]})]});
   for(const p of store.list()){
     assert.equal(p.routes,null);
@@ -154,4 +154,66 @@ test('給出去的組合是唯讀的', ()=>{
   assert.throws(()=>{p.routes[0].name='改'});
   assert.throws(()=>{store.list().push(pair('z'))});
   assert.equal(s.get('bus.pairs')[0].name,'組合a');
+});
+
+/* ---------- 生活圈與轉乘 ---------- */
+test('生活圈：舊資料沒有 region＝雙北；不認得的也當雙北；雙北寫回時不多寫欄位', ()=>{
+  const {s,store}=make({'bus.pairs':[pair('a'),pair('b',{region:'taichung'}),pair('c',{region:'火星'})]});
+  assert.deepEqual(store.list().map(p=>p.region),['north','taichung','north']);
+  store.toggleExclude('a','100');
+  const raw=JSON.parse(s.raw('bus.pairs'));
+  assert.equal('region' in raw[0],false); assert.equal(raw[1].region,'taichung'); assert.equal('region' in raw[2],false);
+  assert.equal('via' in raw[0],false); assert.equal('routes2' in raw[0],false); assert.equal('exclude2' in raw[0],false);
+});
+
+test('直達組合寫回後格式和以前完全相同', ()=>{
+  const old=[pair('a',{exclude:['100']})];
+  const {s,store}=make({'bus.pairs':old});
+  store.toggleExclude('a','200'); store.toggleExclude('a','200');
+  assert.deepEqual(JSON.parse(s.raw('bus.pairs')),old);
+});
+
+test('新增轉乘組合：存 via、第二段；兩段各自排除', ()=>{
+  const {s,store}=make({});
+  const p=store.add('去遠方','甲站','乙站',[route('1')],{region:'kaohsiung',via:'轉站',routes2:[route('2')]});
+  assert.equal(p.via,'轉站'); assert.equal(p.region,'kaohsiung'); assert.deepEqual(p.routes2.map(r=>r.name),['2']);
+  store.toggleExclude(p.id,'2',2);
+  const q=store.current();
+  assert.deepEqual([...q.exclude],[]); assert.deepEqual([...q.exclude2],['2']);
+  const raw=JSON.parse(s.raw('bus.pairs'))[0];
+  assert.equal(raw.via,'轉站'); assert.deepEqual(raw.exclude2,['2']); assert.equal(raw.region,'kaohsiung');
+  assert.equal(store.needsRoutes(p.id),false);
+});
+
+test('轉乘組合第二段壞掉或沒有：要重找；直達組合帶的 routes2、exclude2 會被忽略', ()=>{
+  const {store}=make({'bus.pairs':[
+    pair('a',{via:'轉站',routes2:'壞'}),
+    pair('b',{via:'轉站'}),
+    pair('c',{routes2:[route('9')],exclude2:['9']}),
+    pair('d',{via:'甲站',routes2:[route('9')]})]});
+  const [a,b,c,d]=store.list();
+  assert.equal(store.needsRoutes(a.id),true); assert.equal(store.needsRoutes(b.id),true);
+  assert.equal(c.via,null); assert.equal(c.routes2,null); assert.deepEqual([...c.exclude2],[]);
+  assert.equal(d.via,null); /* 轉乘站和上下車站同名：不算轉乘 */
+});
+
+test('重找轉乘組合：存兩段與發現的直達；改成直達或維持轉乘', ()=>{
+  const c=clock(2000);
+  const {store}=make({'bus.pairs':[pair('a',{via:'轉站',routes2:[route('2')],exclude2:['2']})]},c);
+  c.t=5000;
+  let p=store.setRoutes('a',[route('1')],{routes2:[route('3')],direct:[route('直')]});
+  assert.deepEqual(p.routes2.map(r=>r.name),['3']); assert.deepEqual(p.direct.map(r=>r.name),['直']); assert.equal(p.resolvedAt,5000);
+  p=store.dismissDirect('a'); assert.equal(p.direct,null); assert.equal(p.via,'轉站');
+  store.setRoutes('a',[route('1')],{routes2:[route('3')],direct:[route('直')]});
+  p=store.useDirect('a');
+  assert.equal(p.via,null); assert.equal(p.routes2,null); assert.deepEqual(p.routes.map(r=>r.name),['直']); assert.deepEqual([...p.exclude2],[]);
+  assert.equal(store.useDirect('a').via,null); /* 已經是直達：不動 */
+});
+
+test('換轉乘站：兩段換新、第二段排除清單重來；直達組合也能改成轉乘', ()=>{
+  const {store}=make({'bus.pairs':[pair('a',{via:'轉站',routes2:[route('2')],exclude2:['2']}),pair('b')]});
+  let p=store.setVia('a','新轉站',[route('5')],[route('6')]);
+  assert.equal(p.via,'新轉站'); assert.deepEqual(p.routes.map(r=>r.name),['5']); assert.deepEqual([...p.exclude2],[]);
+  p=store.setVia('b','轉站',[route('7')],[route('8')]);
+  assert.equal(p.via,'轉站'); assert.deepEqual(p.routes2.map(r=>r.name),['8']);
 });

@@ -84,6 +84,24 @@
       buses:shown.map(x=>{const sec=live(x.d)?x.d.EstimateTime:null; return {name:x.r.name,sec,hot:sec!=null&&sec<SOON}})});
   }
 
+  /* 轉乘組合拆成兩段，各自當成一個組合交給 boardOf；直達組合原樣回傳
+     leg=1：上車站 → 轉乘站（routes、exclude）；leg=2：轉乘站 → 下車站（routes2、exclude2） */
+  function legOf(pair,leg){
+    if(!pair||!pair.via) return pair;
+    return leg===2?{from:pair.via,to:pair.to,routes:pair.routes2||[],exclude:pair.exclude2||[]}
+      :{from:pair.from,to:pair.via,routes:pair.routes||[],exclude:pair.exclude||[]};
+  }
+  /* 看第一段時，第二段如果沒車就回傳一行警告（純文字），有車或不是轉乘組合回傳 null。
+     第二段的站牌和第一段一起查到站，不多花查詢次數。 */
+  function secondLegNote(pair,rows,at,now){
+    if(!pair||!pair.via) return null;
+    const b=boardOf(legOf(pair,2),rows,at,now), leg='第二段（'+pair.via+' → '+pair.to+'）';
+    if(b.state==='noRoutes') return leg+'找不到路線，請到設定換轉乘站。';
+    if(b.state==='allExcluded') return leg+'的路線都已排除。';
+    if(b.state==='noBus'||b.hero.eta.tone==='dim') return leg+'目前沒有車，可能已收班。';
+    return null;
+  }
+
   /* 示範資料：還沒填金鑰時顯示，和真的看板走同一條路 */
   function demoBoard(to,now){
     const mk=(name,hops)=>({city:'Taipei',route:'DEMO'+name,name,dir:0,stop:'DEMO',hops});
@@ -96,7 +114,7 @@
       row('D4',{StopStatus:1,NextBusTime:new Date(now+40*60000).toISOString()})],now,now);
   }
 
-  const api={boardOf,demoBoard};
+  const api={boardOf,demoBoard,legOf,secondLegNote};
   if(typeof module!=='undefined'&&module.exports) module.exports=api;
   else root.Board=api;
 })(typeof window!=='undefined'?window:this);

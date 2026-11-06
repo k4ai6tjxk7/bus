@@ -123,3 +123,32 @@ test('回傳純文字：站名與路線名含 < 時原樣保留', ()=>{
   assert.equal(b.hero.name,'<i>1');
   assert.equal(b.hero.sub,'坐 5 站到<b>站');
 });
+
+/* ---------- 轉乘 ---------- */
+test('轉乘組合拆兩段；直達組合原樣', ()=>{
+  const {legOf}=require('../board.js');
+  const r1=[{city:'Taipei',route:'A',name:'1',dir:0,stop:'S1',hops:3}], r2=[{city:'Taipei',route:'B',name:'2',dir:0,stop:'X1',hops:4}];
+  const p={from:'甲站',via:'轉站',to:'乙站',routes:r1,routes2:r2,exclude:['x'],exclude2:['y']};
+  assert.deepEqual(legOf(p,1),{from:'甲站',to:'轉站',routes:r1,exclude:['x']});
+  assert.deepEqual(legOf(p,2),{from:'轉站',to:'乙站',routes:r2,exclude:['y']});
+  const d={from:'甲站',to:'乙站',routes:r1,exclude:[]};
+  assert.equal(legOf(d,2),d);
+});
+
+test('第二段沒車時才有警告', ()=>{
+  const {secondLegNote,boardOf,legOf}=require('../board.js');
+  const r2=[{city:'Taipei',route:'B',name:'2',dir:0,stop:'X1',hops:4}];
+  const p={from:'甲站',via:'轉站',to:'乙站',routes:[{city:'Taipei',route:'A',name:'1',dir:0,stop:'S1',hops:3}],routes2:r2,exclude:[],exclude2:[]};
+  const row=d=>Object.assign({_city:'Taipei',StopUID:'X1',RouteUID:'B',Direction:0},d);
+  const T=1e12;
+  assert.equal(secondLegNote(p,[row({StopStatus:0,EstimateTime:300})],T,T),null);
+  assert.equal(secondLegNote(p,[row({StopStatus:1,NextBusTime:new Date(T+6e5).toISOString()})],T,T),null);
+  assert.match(secondLegNote(p,[row({StopStatus:3})],T,T),/目前沒有車/);
+  assert.match(secondLegNote(p,[],T,T),/第二段（轉站 → 乙站）目前沒有車/);
+  assert.match(secondLegNote(Object.assign({},p,{routes2:[]}),[],T,T),/找不到路線/);
+  assert.match(secondLegNote(Object.assign({},p,{exclude2:['2']}),[],T,T),/都已排除/);
+  assert.equal(secondLegNote({from:'甲站',to:'乙站',routes:[]},[],T,T),null);
+  /* 第一段看板的「坐幾站到」寫轉乘站 */
+  const b=boardOf(legOf(p,1),[{_city:'Taipei',StopUID:'S1',RouteUID:'A',Direction:0,StopStatus:0,EstimateTime:300}],T,T);
+  assert.equal(b.hero.sub,'坐 3 站到轉站');
+});

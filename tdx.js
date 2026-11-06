@@ -1,7 +1,9 @@
 'use strict';
 /* ---------- TDX 查詢 ----------
    所有和 TDX 打交道的事都在這裡：網址、篩選語法、查哪些縣市、金鑰與 token、查詢額度、錯誤訊息。
-   呼叫端只說「搜尋站名」「找路線」「查到站」「存金鑰」。
+   呼叫端只說「搜尋站名」「經過某站的路線」「查到站」「存金鑰」。
+   搜尋站名、經過某站的路線：只查 opts.region 生活圈的縣市（見 regions.js，沒給就是雙北）。
+   路線比對（直達、轉乘）不在這裡，見 routes.js。
 
    查詢額度（基礎會員每把金鑰每分鐘 5 次，含取 token）：
    - 任意 61 秒內最多 4 次，留 1 次餘裕。時間戳存在 bus.calls（不含金鑰資訊），跨分頁共用。
@@ -16,7 +18,7 @@
 (function(root){
   const API='https://tdx.transportdata.tw/api/basic/v2/Bus';
   const TOKEN_URL='https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token';
-  const CITIES=['Taipei','NewTaipei'];
+  const Regions=typeof module!=='undefined'&&module.exports?require('./regions.js'):root.Regions;
   const RL_MAX=4, RL_WIN=61000, PAUSE_MS=65000, FUTURE_OK=5000;
   const KEY_MAX=200;
 
@@ -134,47 +136,38 @@
         await getToken(true,opts||{});
         return true;
       },
-      /* 站名搜尋；同一個關鍵字這次打開頁面內只查一次 */
+      /* 站名搜尋；同一個生活圈、同一個關鍵字這次打開頁面內只查一次 */
       searchStops(kw,opts){
-        if(stopCache.has(kw)) return Promise.resolve(stopCache.get(kw));
-        return op(CITIES.length,opts,async o=>{
+        const reg=Regions.get(opts&&opts.region), ck=reg.id+'|'+kw;
+        if(stopCache.has(ck)) return Promise.resolve(stopCache.get(ck));
+        return op(reg.cities.length,opts,async o=>{
           const names=new Set();
-          for(const city of CITIES){
+          for(const city of reg.cities){
             const d=await get('/Stop/City/'+city,{$filter:`contains(StopName/Zh_tw,'${q(kw)}')`,$select:'StopName',$top:'300'},o);
             d.forEach(s=>{if(s&&s.StopName&&typeof s.StopName.Zh_tw==='string') names.add(s.StopName.Zh_tw)});
           }
           const list=[...names].sort((a,b)=>a.localeCompare(b,'zh-Hant'));
-          stopCache.set(kw,list);
+          stopCache.set(ck,list);
           return list;
         });
       },
-      /* 找出先經過上車站、再經過下車站（同方向）的路線 */
-      findRoutes(from,to,opts){
-        return op(CITIES.length,opts,async o=>{
-          const seen={};
-          for(const city of CITIES){
-            const data=await get('/StopOfRoute/City/'+city,{$filter:`Stops/any(s: contains(s/StopName/Zh_tw,'${q(stopCore(from))}'))`,
+      /* 經過某站的所有路線（原始資料，每筆加上 _city），交給路線比對 */
+      routesThrough(stop,opts){
+        const reg=Regions.get(opts&&opts.region);
+        return op(reg.cities.length,opts,async o=>{
+          const rows=[];
+          for(const city of reg.cities){
+            const data=await get('/StopOfRoute/City/'+city,{$filter:`Stops/any(s: contains(s/StopName/Zh_tw,'${q(stopCore(stop))}'))`,
               $select:'RouteUID,RouteName,Direction,Stops'},o);
-            for(const r of data){
-              if(!r||!r.RouteName) continue;
-              const st=Array.isArray(r.Stops)?r.Stops:[];
-              const name=s=>s&&s.StopName?norm(s.StopName.Zh_tw):'';
-              const oi=st.findIndex(s=>name(s)===norm(from));
-              if(oi<0) continue;
-              const di=st.findIndex((s,i)=>i>oi&&name(s)===norm(to));
-              if(di<0) continue;
-              const key=city+r.RouteUID+r.Direction+st[oi].StopUID;
-              const item={city,route:r.RouteUID,name:r.RouteName.Zh_tw,dir:r.Direction,stop:st[oi].StopUID,hops:di-oi};
-              if(!seen[key]||seen[key].hops>item.hops) seen[key]=item;
-            }
+            data.forEach(r=>{if(r&&typeof r==='object') rows.push(Object.assign(r,{_city:city}))});
           }
-          return Object.values(seen);
+          return rows;
         });
       },
       /* 查到站：同縣市所有站合併成一次查詢；回傳原始資料（加上 _city）交給看板內容 */
       arrivals(routes,opts){
         const byCity={};
-        (routes||[]).forEach(r=>{if(r&&CITIES.includes(r.city))(byCity[r.city]=byCity[r.city]||new Set()).add(r.stop)});
+        (routes||[]).forEach(r=>{if(r&&Regions.isCity(r.city))(byCity[r.city]=byCity[r.city]||new Set()).add(r.stop)});
         const cities=Object.keys(byCity);
         return op(cities.length,opts,async o=>{
           const rows=[];
