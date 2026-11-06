@@ -106,141 +106,22 @@
   else renderer.setAnimationLoop(()=>{if(document.visibilityState==='visible') frame(performance.now())});
 })();
 
-const API='https://tdx.transportdata.tw/api/basic/v2/Bus';
-const TOKEN_URL='https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token';
-const CITIES=['Taipei','NewTaipei'];
 const $=id=>document.getElementById(id);
 const LS={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},
           set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 
-let cfg=LS.get('bus.cfg',null);
-/* 金鑰設定壞掉（不是物件或欄位不是字串）就當成沒填，不讓整頁停擺 */
-if(!cfg||typeof cfg!=='object'||typeof cfg.id!=='string'||typeof cfg.secret!=='string') cfg={id:'',secret:''};
+const LS_ADAPTER={get:k=>LS.get(k),set:(k,v)=>LS.set(k,v)};
 /* 組合的讀寫、驗證全部交給組合儲存（pairs.js） */
-const store=PairStore.createPairStore({get:k=>LS.get(k),set:(k,v)=>LS.set(k,v)});
-let tok=LS.get('bus.tok',null);
-let busy=false, pausedUntil=0, lastTouch=Date.now(), idlePaused=false;
-const IDLE_MS=10*60000, BACKOFF_MS=65000;
+const store=PairStore.createPairStore(LS_ADAPTER);
+/* 和 TDX 打交道（金鑰、token、查詢額度、錯誤訊息）全部交給 TDX 查詢（tdx.js） */
+const tdx=Tdx.createTdx({fetch:(u,o)=>fetch(u,o),storage:LS_ADAPTER});
+let busy=false, lastTouch=Date.now(), idlePaused=false;
+const IDLE_MS=10*60000;
 
-const norm=s=>(s||'').replace(/\s/g,'').replace(/（/g,'(').replace(/）/g,')');
-const core=s=>norm(s).split('(')[0];
-const q=s=>String(s).replace(/'/g,"''");
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-
-/* ---------- 查詢次數限制 ----------
-   基礎會員每把金鑰每分鐘最多 5 次（含取 token）。這裡自己把關：任意 61 秒內最多 4 次，
-   留 1 次餘裕。紀錄只存時間戳（不含任何金鑰資訊），放在 localStorage，
-   重新整理或開多個分頁也會算在一起。 */
-const RL_MAX=4, RL_WIN=61000;
-function rlLoad(){
-  const now=Date.now(), a=LS.get('bus.calls',[]);
-  return Array.isArray(a)?a.filter(t=>typeof t==='number'&&t>now-RL_WIN&&t<=now+5000).sort((x,y)=>x-y):[];
-}
-function rlFree(){return Math.max(0,RL_MAX-rlLoad().length)}
-let rlChain=Promise.resolve();
-/* 取得一次查詢額度；額度用完就排隊等，onWait(秒數) 用來顯示還要等多久 */
-function rlTake(onWait){
-  const run=async()=>{
-    for(;;){
-      const a=rlLoad();
-      if(a.length<RL_MAX){a.push(Date.now()); LS.set('bus.calls',a); return}
-      const wait=Math.max(200,a[0]+RL_WIN-Date.now()+100);
-      if(onWait) onWait(Math.ceil(wait/1000));
-      await sleep(Math.min(wait,1000));
-    }
-  };
-  const p=rlChain.then(run); rlChain=p.catch(()=>{}); return p;
-}
-/* 收到 429：把這一分鐘的額度視為用完 */
-function rlFill(){const now=Date.now(); LS.set('bus.calls',Array(RL_MAX).fill(now))}
-function rateErr(){const e=new Error('RATE'); e.rate=true; return e}
-function errText(e){
-  if(e.message==='NOKEY') return '請先到設定填入金鑰。';
-  if(e.rate) return 'TDX 暫時限制這組金鑰的查詢次數（每分鐘最多 5 次），約 1 分鐘後再試。';
-  return e.message;
-}
-
-/* ---------- TDX ---------- */
-function tokValid(){return !!(tok&&typeof tok.v==='string'&&tok.exp>Date.now()+60000)}
-async function getToken(force,onWait){
-  if(!force&&tokValid()) return tok.v;
-  if(!cfg.id||!cfg.secret) throw new Error('NOKEY');
-  await rlTake(onWait);
-  let r;
-  try{
-    r=await fetch(TOKEN_URL,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
-      body:new URLSearchParams({grant_type:'client_credentials',client_id:cfg.id,client_secret:cfg.secret})});
-  }catch(e){throw new Error('連不上 TDX，請確認網路後再試。')}
-  if(r.status===429){rlFill(); throw rateErr()}
-  if(!r.ok) throw new Error('金鑰驗證失敗（HTTP '+r.status+'），請確認 Client ID 和 Secret。');
-  const j=await r.json();
-  if(!j||typeof j.access_token!=='string') throw new Error('金鑰驗證失敗，TDX 回傳格式不正確。');
-  /* token 效期 24 小時，提早 1 小時重取 */
-  const life=Math.max(300,Math.min(+j.expires_in||3600,86400)-3600);
-  tok={v:j.access_token,exp:Date.now()+life*1000}; LS.set('bus.tok',tok);
-  return tok.v;
-}
-async function api(path,params,onWait){
-  const qs=Object.entries(Object.assign({},params,{$format:'JSON'})).map(([k,v])=>k+'='+encodeURIComponent(v)).join('&');
-  let renewed=false;
-  for(let i=0;i<2;i++){
-    const t=await getToken(renewed,onWait);
-    await rlTake(onWait);
-    let r;
-    try{r=await fetch(API+path+'?'+qs,{headers:{Authorization:'Bearer '+t}})}
-    catch(e){throw new Error('連不上 TDX，請確認網路後再試。')}
-    if(r.status===401&&!renewed){renewed=true; tok=null; LS.set('bus.tok',null); continue}
-    if(r.status===429){rlFill(); throw rateErr()}
-    if(!r.ok){
-      let body=''; try{body=(await r.text()).slice(0,200)}catch(e){}
-      throw new Error('資料查詢失敗（HTTP '+r.status+'）'+(body?'：'+body:''));
-    }
-    return r.json();
-  }
-  throw new Error('金鑰驗證失敗，請到設定重新儲存。');
-}
-/* 自動更新需要幾次額度（不夠就跳過這輪，不和手動操作搶） */
-function callsNeeded(p){
-  let n=tokValid()?0:1;
-  if(store.needsRoutes(p.id)) n+=CITIES.length;
-  n+=p.routes?new Set(p.routes.map(r=>r.city)).size:CITIES.length;
-  return n;
-}
-
-/* 找出先經過上車站、再經過下車站（同方向）的路線 */
-async function findRoutes(from,to,onWait){
-  const seen={};
-  for(const city of CITIES){
-    const data=await api('/StopOfRoute/City/'+city,{$filter:`Stops/any(s: contains(s/StopName/Zh_tw,'${q(core(from))}'))`,
-      $select:'RouteUID,RouteName,Direction,Stops'},onWait);
-    for(const r of data){
-      const st=r.Stops||[];
-      const oi=st.findIndex(s=>norm(s.StopName.Zh_tw)===norm(from));
-      if(oi<0) continue;
-      const di=st.findIndex((s,i)=>i>oi&&norm(s.StopName.Zh_tw)===norm(to));
-      if(di<0) continue;
-      const key=city+r.RouteUID+r.Direction+st[oi].StopUID;
-      const item={city,route:r.RouteUID,name:r.RouteName.Zh_tw,dir:r.Direction,stop:st[oi].StopUID,hops:di-oi};
-      if(!seen[key]||seen[key].hops>item.hops) seen[key]=item;
-    }
-  }
-  return Object.values(seen);
-}
-
-/* 到站資料：只負責查詢，對到路線、排序、去重都交給看板內容（board.js） */
-async function loadEta(p,onWait){
-  const byCity={};
-  p.routes.forEach(r=>{if(CITIES.includes(r.city))(byCity[r.city]=byCity[r.city]||new Set()).add(r.stop)});
-  const rows=[];
-  for(const city of Object.keys(byCity)){
-    const f=[...byCity[city]].map(u=>`StopUID eq '${q(u)}'`).join(' or ');
-    const data=await api('/EstimatedTimeOfArrival/City/'+city,{$filter:f,
-      $select:'StopUID,RouteUID,Direction,StopStatus,EstimateTime,NextBusTime'},onWait);
-    if(Array.isArray(data)) data.forEach(d=>{if(d&&typeof d==='object') rows.push(Object.assign(d,{_city:city}))});
-  }
-  return rows;
-}
+/* 排隊等額度時的提示：limit 自己保留額度、paused 被 TDX 擋 */
+const waitText=(s,why,then)=>why==='paused'?'TDX 暫時限制這組金鑰的查詢次數，約 '+s+' 秒後自動重試…'
+  :'為了不超過 TDX 每分鐘的查詢上限，約 '+s+' 秒後'+(then||'送出查詢')+'…';
 
 function curPair(){return store.current()}
 function showMsg(t){$('msg').textContent=t||''; $('msg').hidden=!t}
@@ -288,7 +169,7 @@ let view={id:null,since:0,done:false};
 function viewStart(){const p=curPair(); view={id:p?p.id:null,since:Date.now(),done:false}}
 function viewCheck(){
   const p=curPair();
-  if(view.done||!p||p.id!==view.id||!(cfg.id&&cfg.secret)) return;
+  if(view.done||!p||p.id!==view.id||!tdx.hasKey()) return;
   if(Date.now()-view.since>=VIEW_MS){view.done=true; usageAdd(p.id)}
 }
 
@@ -306,7 +187,7 @@ function renderChips(){
   $('pairMenu').innerHTML=list.map(x=>{const on=p&&x.id===p.id;
     return `<button type="button" data-id="${esc(x.id)}" aria-current="${on}"><span class="mi"><span class="mn">${esc(x.name)}</span><span class="ms">${esc(x.from)} → ${esc(x.to)}</span></span>${on?CHECK:''}</button>`}).join('')
     +'<button type="button" class="manage" data-act="manage">新增或管理組合</button>';
-  $('boardTitle').textContent=p?core(p.from)+' 下一班進站':'下一班進站';
+  $('boardTitle').textContent=p?Tdx.stopCore(p.from)+' 下一班進站':'下一班進站';
   $('trip').innerHTML=p?`<div class="dot"></div><div><div class="lbl">上車</div><div class="stop">${esc(p.from)}</div></div>
     <div class="rail"></div><div></div>
     <div class="dot end"></div><div><div class="lbl">下車</div><div class="stop">${esc(p.to)}</div></div>`:'';
@@ -386,37 +267,36 @@ function demo(p){
 
 /* auto=true：自動更新，額度不夠就跳過這輪；auto=false：使用者操作，額度不夠就排隊等 */
 async function refresh(auto){
-  let p=curPair(); const hasKey=!!(cfg.id&&cfg.secret);
+  let p=curPair(); const hasKey=tdx.hasKey();
   renderGuide(hasKey,!!p);
   $('demoNote').hidden=true;
   if(!hasKey||!p){demo(p);return}
   if(busy) return;
-  if(Date.now()<pausedUntil){
-    if(!auto) showMsg('TDX 暫時限制這組金鑰的查詢次數，'+Math.ceil((pausedUntil-Date.now())/1000)+' 秒後自動恢復。畫面是最後一次的資料。');
-    return;
-  }
-  if(auto&&rlFree()<Math.min(callsNeeded(p),RL_MAX)) return;
-  const pid=p.id, stillHere=()=>(curPair()||{}).id===pid;
+  const pid=p.id, stillHere=()=>(curPair()||{}).id===pid, prevTry=lastTry;
   busy=true; lastTry=Date.now(); $('btnRefresh').classList.add('spin');
-  const onWait=s=>showMsg('為了不超過 TDX 每分鐘的查詢上限，約 '+s+' 秒後送出查詢…');
+  /* auto：額度不夠時 TDX 查詢回傳 null（這輪跳過），下一次心跳再試 */
+  const opts={auto:!!auto,onWait:(s,why)=>showMsg(waitText(s,why))};
+  const skipped=()=>{lastTry=prevTry};
   try{
     if(store.needsRoutes(pid)){
       if(!last||last.pid!==pid) $('hero').innerHTML='<div class="board-empty">正在找可搭的路線…</div>';
-      p=store.setRoutes(pid,await findRoutes(p.from,p.to,onWait));
+      const found=await tdx.findRoutes(p.from,p.to,opts);
+      if(found===null) return skipped();
+      p=store.setRoutes(pid,found);
       if(!p||!stillHere()) return; /* 等待期間組合被刪除或切換了 */
     }
     /* 找不到路線、或路線全部排除了：不用查到站，省一次查詢 */
     const pre=Board.boardOf(p,[],Date.now(),Date.now());
     if(pre.state==='noRoutes'){last=null; renderBoard(pre,false); showMsg('請到設定確認站名，或按「重找路線」。'); return}
     if(pre.state==='allExcluded'){last=null; renderBoard(pre,true); showMsg(''); return}
-    const rows=await loadEta(p,onWait);
+    const rows=await tdx.arrivals(p.routes,opts);
+    if(rows===null) return skipped();
     if(!stillHere()) return; /* 等待期間使用者切換了組合 */
     const at=Date.now();
-    last={pid,rows,at};
+    last={pid,rows,at}; lastTry=at; /* 從拿到資料起算下次更新（排隊等很久時不會一查完又馬上再查） */
     renderBoard(Board.boardOf(curPair(),rows,at,at),true); stamp(); showMsg('');
   }catch(e){
-    if(e.rate){pausedUntil=Date.now()+BACKOFF_MS; showMsg('TDX 暫時限制這組金鑰的查詢次數，約 1 分鐘後自動恢復。畫面是最後一次的資料。')}
-    else showMsg(errText(e));
+    showMsg(e.message+(e.kind==='rate'?'畫面是最後一次的資料。':''));
     $('live').classList.add('stale');
   }finally{
     busy=false; $('btnRefresh').classList.remove('spin');
@@ -428,7 +308,7 @@ async function refresh(auto){
 function openSettings(on,focusId){
   $('board').hidden=on; $('settings').hidden=!on; closeMenu();
   if(on){
-    $('cid').value=cfg.id; $('csec').value=cfg.secret; renderPairs(); renderUsage();
+    const k=tdx.key(); $('cid').value=k.id; $('csec').value=k.secret; renderPairs(); renderUsage();
     const f=focusId&&$(focusId);
     if(f){f.scrollIntoView({block:'center'}); f.focus({preventScroll:true})} else window.scrollTo(0,0);
   } else {renderChips(); refresh(); viewStart()}
@@ -474,12 +354,15 @@ $('btnBack').onclick=()=>openSettings(false);
 $('btnRefresh').onclick=()=>refresh();
 
 $('btnSaveKey').onclick=async()=>{
-  cfg={id:$('cid').value.trim(),secret:$('csec').value.trim()}; LS.set('bus.cfg',cfg); tok=null; LS.set('bus.tok',null);
   $('keyStatus').textContent='測試中…';
-  try{await getToken(true,s=>{$('keyStatus').textContent='等待查詢額度，約 '+s+' 秒…'}); $('keyStatus').textContent='✓ 金鑰可以用了'}
-  catch(e){$('keyStatus').textContent=e.message==='NOKEY'?'請填入兩個欄位。':errText(e)}
+  try{
+    await tdx.saveKey($('cid').value,$('csec').value,{onWait:(s,why)=>{$('keyStatus').textContent=why==='paused'?waitText(s,why):'等待查詢額度，約 '+s+' 秒…'}});
+    $('keyStatus').textContent='✓ 金鑰可以用了';
+  }catch(e){$('keyStatus').textContent=e.kind==='nokey'?'請填入兩個欄位。':e.message}
 };
-const addWait=s=>{$('addStatus').textContent='為了不超過 TDX 每分鐘的查詢上限，約 '+s+' 秒後繼續…'};
+/* 設定頁的操作：等額度時的提示，以及「沒金鑰」換成設定頁的說法 */
+const addOpts={onWait:(s,why)=>{$('addStatus').textContent=waitText(s,why,'繼續')}};
+const setErr=e=>{$('addStatus').textContent=e.kind==='nokey'?'請先儲存金鑰。':e.message};
 
 function renderPairs(){
   const list=store.list();
@@ -505,8 +388,8 @@ $('pairList').addEventListener('click',async e=>{
     renderPairs(); renderUsage();
   }else{
     b.textContent='尋找中…';
-    try{store.setRoutes(p.id,await findRoutes(p.from,p.to,addWait)); $('addStatus').textContent=''; if(last&&last.pid===p.id) last=null}
-    catch(err){$('addStatus').textContent=err.message==='NOKEY'?'請先儲存金鑰。':errText(err)}
+    try{store.setRoutes(p.id,await tdx.findRoutes(p.from,p.to,addOpts)); $('addStatus').textContent=''; if(last&&last.pid===p.id) last=null}
+    catch(err){setErr(err)}
     renderPairs();
   }
 });
@@ -522,28 +405,15 @@ $('btnClearUsage').onclick=()=>{
   LS.set(USAGE_KEY,[]); renderUsage();
 };
 
-/* 同一個關鍵字這次打開頁面內只查一次，省查詢次數 */
-const stopCache=new Map();
-async function searchStops(kw,onWait){
-  if(stopCache.has(kw)) return stopCache.get(kw);
-  const names=new Set();
-  for(const city of CITIES){
-    const d=await api('/Stop/City/'+city,{$filter:`contains(StopName/Zh_tw,'${q(kw)}')`,$select:'StopName',$top:'300'},onWait);
-    d.forEach(s=>{if(s&&s.StopName&&typeof s.StopName.Zh_tw==='string') names.add(s.StopName.Zh_tw)});
-  }
-  const list=[...names].sort((a,b)=>a.localeCompare(b,'zh-Hant'));
-  stopCache.set(kw,list);
-  return list;
-}
 function bindSearch(btn,kw,sel){
   $(btn).onclick=async()=>{
     const k=$(kw).value.trim(); if(!k||$(btn).disabled)return;
     $(btn).textContent='搜尋中'; $(btn).disabled=true;
     try{
-      const list=await searchStops(k,s=>{$(btn).textContent='等 '+s+' 秒'});
+      const list=await tdx.searchStops(k,{onWait:s=>{$(btn).textContent='等 '+s+' 秒'}}); /* 同關鍵字只查一次 */
       $(sel).innerHTML=list.length?list.map(n=>`<option>${esc(n)}</option>`).join(''):'<option value="">找不到這個站名</option>';
       $(sel).hidden=false; $('addStatus').textContent='';
-    }catch(e){$('addStatus').textContent=e.message==='NOKEY'?'請先儲存金鑰。':errText(e)}
+    }catch(e){setErr(e)}
     $(btn).textContent='搜尋'; $(btn).disabled=false;
   };
 }
@@ -556,11 +426,11 @@ $('btnAdd').onclick=async()=>{
   if(store.list().length>=PairStore.PAIR_MAX){$('addStatus').textContent='最多只能存 '+PairStore.PAIR_MAX+' 組，請先刪除不用的組合。';return} /* 先擋，不浪費查詢 */
   $('addStatus').textContent='正在找出符合的路線…';
   try{
-    const r=await findRoutes(from,to,addWait);
+    const r=await tdx.findRoutes(from,to,addOpts);
     store.add(name,from,to,r);
     $('addStatus').textContent=r.length?`已新增，找到 ${r.length} 條路線：${[...new Set(r.map(x=>x.name))].join('、')}。有不想搭的（例如比較繞），可以在上方這一組裡排除。`:'已新增，但目前找不到同時經過這兩站的路線。';
     renderPairs();
-  }catch(e){$('addStatus').textContent=e.message==='NOKEY'?'請先儲存金鑰。':errText(e)}
+  }catch(e){setErr(e)}
 };
 
 /* ---------- 啟動 ---------- */
