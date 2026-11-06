@@ -2,7 +2,7 @@
 /* 路線比對的測試：node --test tests/*.test.js（只用假資料） */
 const test=require('node:test');
 const assert=require('node:assert/strict');
-const {direct,transfers,dist}=require('../routes.js');
+const {direct,transfers,dist,norm,stopCore}=require('../routes.js');
 
 /* 站名後面可以接 @緯度,經度 指定座標 */
 const st=(...n)=>n.map((x,i)=>{
@@ -80,4 +80,12 @@ test('轉乘：第二段同一站出現兩次（環狀），取離下車站最�
   const toRaw=[rt('B1','2',0,st('轉一','a','b','轉一','乙站'))];
   const c=transfers(fromRaw,toRaw,'甲站','乙站');
   assert.deepEqual(c[0].routes2.map(x=>[x.hops,x.stop]),[[1,'U轉一3']]);
+});
+
+test('站名規則：忽略空白、全形括號當半形；查詢關鍵字去掉括號後面那段', ()=>{
+  assert.equal(norm(' 丁 站（北） '),'丁站(北)');
+  assert.equal(stopCore('丁站（北）'),'丁站');
+  assert.equal(stopCore('庚 站(東)'),'庚站');
+  assert.equal(stopCore('辛站'),'辛站');
+  assert.equal(norm(''),''); assert.equal(norm(null),''); assert.equal(stopCore(undefined),'');
 });

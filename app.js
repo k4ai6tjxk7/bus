@@ -192,7 +192,7 @@ function renderChips(){
     return `<button type="button" data-id="${esc(x.id)}" aria-current="${on}"><span class="mi"><span class="mn">${esc(x.name)}</span><span class="ms">${esc(stopsText(x))}</span></span>${on?CHECK:''}</button>`}).join('')
     +'<button type="button" class="manage" data-act="manage">新增或管理組合</button>';
   const v=viewPair();
-  $('boardTitle').textContent=!p?'下一班進站':(p.via?(leg===2?'第二段・':'第一段・'):'')+Tdx.stopCore(v.from)+' 下一班進站';
+  $('boardTitle').textContent=!p?'下一班進站':(p.via?(leg===2?'第二段・':'第一段・'):'')+Routes.stopCore(v.from)+' 下一班進站';
   const stop=(cls,lbl,name)=>`<div class="dot ${cls}"></div><div class="${cls==='past'?'past':''}"><div class="lbl">${lbl}</div><div class="stop">${esc(name)}</div></div>`;
   $('trip').innerHTML=!p?'':!p.via?`${stop('','上車',p.from)}<div class="rail"></div><div></div>${stop('end','下車',p.to)}`
     :leg===2?`${stop('past','上車（已搭過）',p.from)}<div class="rail off"></div><div></div>${stop('via','現在在這裡轉乘',p.via)}<div class="rail"></div><div></div>${stop('end','下車',p.to)}`
@@ -299,20 +299,20 @@ function demo(p){
    回傳 {routes, routes2, direct}；自動更新額度不夠回傳 null */
 async function resolveRoutes(p,opts){
   const o=regionOpts(p,opts);
-  const rawFrom=await tdx.routesThrough(p.from,o); if(rawFrom===null) return null;
+  const rawFrom=await tdx.routesThrough(Routes.stopCore(p.from),o); if(rawFrom===null) return null;
   const direct=Routes.direct(rawFrom,p.from,p.to);
   if(!p.via) return {routes:direct};
-  const rawTo=await tdx.routesThrough(p.to,o); if(rawTo===null) return null;
+  const rawTo=await tdx.routesThrough(Routes.stopCore(p.to),o); if(rawTo===null) return null;
   const c=Routes.transfers(rawFrom,rawTo,p.from,p.to,{via:p.via})[0];
   return {routes:c?c.routes1:[],routes2:c?c.routes2:[],direct};
 }
 /* 沒有直達時找轉乘站候選（最多 3 個）。回傳 {direct, cands} */
 async function findTransfers(region,from,to,opts){
   const o=Object.assign({region},opts);
-  const rawFrom=await tdx.routesThrough(from,o);
+  const rawFrom=await tdx.routesThrough(Routes.stopCore(from),o);
   const direct=Routes.direct(rawFrom,from,to);
   if(direct.length) return {direct,cands:[]};
-  const rawTo=await tdx.routesThrough(to,o);
+  const rawTo=await tdx.routesThrough(Routes.stopCore(to),o);
   return {direct,cands:Routes.transfers(rawFrom,rawTo,from,to)};
 }
 
@@ -480,7 +480,7 @@ $('pairList').addEventListener('click',async e=>{
     b.textContent='尋找中…';
     try{
       const o=Object.assign({region:p.region},addOpts);
-      const raw1=await tdx.routesThrough(p.from,o), raw2=await tdx.routesThrough(p.to,o);
+      const raw1=await tdx.routesThrough(Routes.stopCore(p.from),o), raw2=await tdx.routesThrough(Routes.stopCore(p.to),o);
       const cands=Routes.transfers(raw1,raw2,p.from,p.to);
       renderPairs();
       const el=$('vp-'+p.id); if(!el) return;

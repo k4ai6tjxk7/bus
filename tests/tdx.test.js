@@ -142,7 +142,7 @@ test('金鑰錯：saveKey 丟 auth；沒填完整丟 nokey；成功會存起來'
 test('篩選字串的單引號會跳脫', async()=>{
   const {tdx,sent}=setup(ok([]));
   await tdx.searchStops("O'Hare");
-  await tdx.routesThrough("甲'站(台北)");
+  await tdx.routesThrough("甲'站");
   await tdx.arrivals([{city:'Taipei',stop:"S'1"}]);
   const urls=sent.filter(isData).map(x=>x.url);
   assert.ok(urls[0].includes("contains(StopName/Zh_tw,'O''Hare')"));
@@ -160,9 +160,9 @@ test('每個操作花的額度：搜尋 2、經過某站的路線 2、查到站�
   assert.deepEqual(await tdx.arrivals([]),[]); assert.equal(sent.length,7);
 });
 
-test('經過某站的路線：加上 _city，略過不是物件的資料', async()=>{
+test('經過某站的路線：關鍵字原樣送出（站名規則在 routes.js），加上 _city，略過不是物件的資料', async()=>{
   const {tdx,sent}=setup(url=>url.includes('openid-connect')?TOKEN:res(200,url.includes('NewTaipei')?[{RouteUID:'N'}]:[{RouteUID:'T'},null,'x']));
-  const rows=await tdx.routesThrough('甲站(台北)');
+  const rows=await tdx.routesThrough('甲站');
   assert.deepEqual(rows,[{RouteUID:'T',_city:'Taipei'},{RouteUID:'N',_city:'NewTaipei'}]);
   assert.ok(sent.filter(isData).every(x=>x.url.includes("contains(s/StopName/Zh_tw,'甲站')")));
 });

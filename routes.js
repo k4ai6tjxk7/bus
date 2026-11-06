@@ -8,6 +8,10 @@
    路線格式（和組合儲存相同）：{city, route, name, dir, stop, hops}
      stop 是上車的站牌 StopUID（轉乘第二段就是轉乘站的站牌），hops 是坐幾站。
 
+   站名規則（搜尋、比對、看板標題都用這一份）：
+   - norm：忽略空白，全形括號當成半形
+   - stopCore：再去掉括號後面那段，查 TDX 時當關鍵字用（例如「丁站(北)」→「丁站」）
+
    轉乘規則：
    - 只轉一次；轉乘站必須同名（站名完全相同，只忽略空白與全半形括號）
    - 兩段在轉乘站的站牌相距 300 公尺以內才算（沒有座標的站牌不擋）
@@ -15,6 +19,7 @@
 (function(root){
   const MAX_DIST=300, LIMIT=3;
   const norm=s=>(s||'').replace(/\s/g,'').replace(/（/g,'(').replace(/）/g,')');
+  const stopCore=s=>norm(s).split('(')[0];
   const nameOf=s=>s&&s.StopName&&typeof s.StopName.Zh_tw==='string'?s.StopName.Zh_tw:'';
   const stopsOf=r=>r&&r.RouteName&&typeof r.RouteName.Zh_tw==='string'&&Array.isArray(r.Stops)?r.Stops:null;
   const posOf=s=>{
@@ -90,7 +95,7 @@
     return out.slice(0,limit);
   }
 
-  const api={direct,transfers,dist,norm,MAX_DIST};
+  const api={direct,transfers,dist,norm,stopCore,MAX_DIST};
   if(typeof module!=='undefined'&&module.exports) module.exports=api;
   else root.Routes=api;
 })(typeof window!=='undefined'?window:this);
