@@ -34,6 +34,7 @@ python3 tools/compare/diff.py tools/compare/out/before.json tools/compare/out/af
 | `update` | 到站更新：倒數（含跨過 3 分鐘時交給 3D 場景）、切段、切換組合、閒置、離開後回來、錯誤、示範資料 |
 | `usage` | 使用習慣：自動選組合、停留 20 秒才記、刪除與清除 |
 | `style` | 畫面風格：開啟時就是別款、看板上換風格（扣秒、只留一個畫布）、風格檔載入失敗、畫法出錯後換回別款 |
+| `theme` | 深淺色：手動深色開 App 第一眼就是深色、設定頁切換（不重建場景、不多查 API）、自動跟系統／手動不跟 |
 
 `diff.py` 完全一樣時結束代碼是 0，有差異或 JS 錯誤時是 1。`out/` 已經被 `.gitignore` 擋住，結果不會進 repo。
 

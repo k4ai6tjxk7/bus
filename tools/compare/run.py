@@ -103,6 +103,15 @@ SCENE_SPY = '''(() => {
   }});
 })();'''
 
+# <body> 一出現就記下深淺色：這時 head 已經跑完、畫面還沒畫，記到的就是開頁第一眼的顏色
+FIRST_PAINT = r'''(() => {
+  if (window.__first !== undefined) return;
+  window.__first = null;
+  const take = () => { const r = document.documentElement;
+    window.__first = {theme: r.dataset.theme || '', bg: getComputedStyle(r).getPropertyValue('--bg').trim()}; };
+  new MutationObserver((m, o) => { if (document.body) { take(); o.disconnect(); } }).observe(document, {childList: true, subtree: true});
+})();'''
+
 class Quiet(http.server.SimpleHTTPRequestHandler):
     def log_message(self, *a):
         pass
@@ -123,7 +132,9 @@ def clean_pairs(raw):
 
 def run(browser, port, pairs, cur, steps, fail_eta=False, extra=None):
     log = []
-    ctx = browser.new_context(viewport={'width': 390, 'height': 844}, timezone_id='Asia/Taipei')
+    extra = dict(extra or {})
+    scheme = extra.pop('_scheme', 'light')  # 系統的深淺色
+    ctx = browser.new_context(viewport={'width': 390, 'height': 844}, timezone_id='Asia/Taipei', color_scheme=scheme)
 
     def route(r):
         url = r.request.url
@@ -136,7 +147,6 @@ def run(browser, port, pairs, cur, steps, fail_eta=False, extra=None):
         r.fulfill(json=handle(url))
     ctx.route('https://tdx.transportdata.tw/**', route)
     ctx.route('https://fonts.googleapis.com/**', lambda r: r.abort())  # 字型不影響比對，也不連外
-    extra = dict(extra or {})
     block = extra.pop('_block', None)  # 模擬某個風格檔載入失敗
     if block:
         ctx.route(f'**/{block}*', lambda r: r.fulfill(status=404, body='no'))
@@ -145,6 +155,7 @@ def run(browser, port, pairs, cur, steps, fail_eta=False, extra=None):
         ctx.route(f'**/styles/{broken}.js*', lambda r: r.fulfill(status=200, content_type='application/javascript',
                   body=f"Scene.register('{broken}',function(){{throw new Error('畫法出錯')}});"))
     ctx.add_init_script(SCENE_SPY)
+    ctx.add_init_script(FIRST_PAINT)
     init = {'bus.cfg': {'id': 'id', 'secret': 'sec'}, 'bus.tok': {'v': 'T', 'exp': 4102444800000},
             'bus.pairs': pairs, 'bus.cur': cur, 'bus.tip': True, **extra}
     ctx.add_init_script('if(!sessionStorage.getItem("seeded")){sessionStorage.setItem("seeded","1");'
@@ -279,6 +290,31 @@ def scene_now(key):
         s[key] = {'hero': p.inner_text('#hero'), 'buses': p.evaluate("() => { const r = window.__scenes[window.__scenes.length - 1]; return r.buses[r.buses.length - 1] || null }")}
     return f
 
+def theme_snap(key):
+    """深淺色：html 的 data-theme、頁面與看板的顏色、手機狀態列顏色、設定頁按鈕、建過幾次 3D 場景"""
+    def f(p, s):
+        s[key] = p.evaluate("""() => { const r = document.documentElement, cs = getComputedStyle(r);
+            const meta = [...document.querySelectorAll('meta[name="theme-color"]')].find(m => !m.media || matchMedia(m.media).matches);
+            const seg = document.getElementById('themeSeg');
+            return {theme: r.dataset.theme || '', bg: cs.getPropertyValue('--bg').trim(), scheme: cs.colorScheme,
+                    body: getComputedStyle(document.body).backgroundColor,
+                    board: getComputedStyle(document.querySelector('.board') || document.body).backgroundColor,
+                    meta: meta ? meta.content : null,
+                    seg: seg ? [...seg.querySelectorAll('button')].map(b => b.textContent + (b.getAttribute('aria-pressed') === 'true' ? '*' : '')) : null,
+                    scenes: (window.__scenes || []).length, first: window.__first} }""")
+    return f
+
+def pick_theme(mode):
+    """設定頁選深淺色（舊版沒有這一列就什麼都不做）"""
+    def f(p, s):
+        p.evaluate("m => { const b = document.querySelector(`#themeSeg button[data-mode=\"${m}\"]`); if (b) b.click() }", mode)
+        p.wait_for_timeout(800)
+    return f
+
+def system(scheme):
+    """系統切換深淺色"""
+    return lambda p, s: (p.emulate_media(color_scheme=scheme), p.wait_for_timeout(800))
+
 def back(p, s):
     p.click('#btnBack')
     p.wait_for_timeout(600)
@@ -409,6 +445,15 @@ FLOWS = {
         'S4 某款畫法出錯：只隱藏 3D 場景，換回原版或別款要再出現': ([PA], 'pa', [wait(1500), freeze, style_snap('open'), settings,
                         mark('classic'), pick_style('classic'), back, style_snap('classic'), settings,
                         mark('anime'), pick_style('anime'), back, style_snap('anime')], False, {'bus.style': 'mini', '_broken': 'mini'}),
+    },
+    'theme': {
+        'T1 系統淺色、設定深色開 App：第一眼就是深色': ([PA], 'pa', [wait(1500), theme_snap('open')], False, {'bus.theme': 'dark', '_scheme': 'light'}),
+        'T2 設定頁切深色再回看板：馬上換、不重建場景、不多查 API': ([PA], 'pa', [wait(1500), freeze, theme_snap('open'), settings, theme_snap('settings'),
+                        mark('dark'), pick_theme('dark'), theme_snap('settingsDark'), back, theme_snap('board'), scene_now('buses'),
+                        settings, mark('auto'), pick_theme('auto'), back, theme_snap('auto')]),
+        'T3 自動跟著系統切換，手動不跟（動漫風格）': ([PA], 'pa', [wait(2500), freeze, theme_snap('light'), mark('system dark'), system('dark'), theme_snap('dark'),
+                        settings, mark('light'), pick_theme('light'), back, theme_snap('manualLight'),
+                        mark('system light'), system('light'), mark('system dark'), system('dark'), theme_snap('stillLight')], False, {'bus.style': 'anime'}),
     },
 }
 
