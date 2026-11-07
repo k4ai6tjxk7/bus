@@ -1,0 +1,3 @@
+# 比對工具跑出來的結果與報告，不進 repo
+tools/compare/out/
+*.result.json

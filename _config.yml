@@ -1,0 +1,12 @@
+# GitHub Pages 發佈設定
+# 原則：網站上只放 App 執行需要的檔案（index.html 和它載入的 js）。
+# 測試、工具、文件留在 repo，不發佈。
+# 新增根目錄的檔案或資料夾時，不是 App 需要的就要加進這裡；
+# tests/publish.test.js 會檢查，漏加會讓測試失敗。
+exclude:
+  - tests
+  - tools
+  - docs
+  - README.md
+  - GLOSSARY.md
+  - CODING_STANDARDS.md
