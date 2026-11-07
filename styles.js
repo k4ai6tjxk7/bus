@@ -10,6 +10,14 @@
    createLoader({doc, list}) 回傳 load(id)：
      需要的檔案依序載入完成時 resolve(true)；原版不必載入、立刻 true；載入失敗 resolve(false)，下次可再試。
      同一個檔案只插入一次 <script>（共用零件 kit 只載一次）；有指定字型時同時載入字型。
+   createSwitcher({load, createScene, sceneOpts, root, now}) 回傳：
+     show(id)        換成這款畫面風格：載入完成才換 3D 場景與 <html data-style>。
+                     載入中又換了別款，這款就不換（只畫最後選的）；載入失敗就維持原版（風格設定不動，下次再試）。
+                     回傳 Promise，resolve 成目前實際顯示的風格 id。
+     setBuses(list)  把班次交給目前的 3D 場景並記下時間；換風格時扣掉經過的秒數，交給新場景。
+     建立時就先畫原版，風格檔還沒載完時看板上方也有場景。
+     load＝createLoader 的 load、createScene＝Scene.createScene（測試時換成假的）；
+     sceneOpts 原樣交給 createScene（另加 style）；root 是設 data-style 的元素；now() 回傳毫秒。
 
    list 只在測試時傳，平常用 LIST。 */
 (function(root){
@@ -57,7 +65,32 @@
     };
   }
 
-  const api={createStyleSetting,createLoader,LIST,DEFAULT,KEY,files:()=>[...new Set(LIST.flatMap(s=>s.files||[]))]};
+  function createSwitcher({load,createScene,sceneOpts,root,now}){
+    const make=style=>createScene(Object.assign({},sceneOpts,{style}));
+    let scene=make(DEFAULT), shown=DEFAULT, want=DEFAULT;
+    let last=null;                /* 最後交給場景的班次與時間 */
+    function show(id){
+      want=id;
+      return load(id).then(ok=>{
+        if(want!==id) return shown;   /* 載入時又換了別款 */
+        const use=ok?id:DEFAULT;
+        if(use===shown) return shown;
+        shown=use;
+        if(use===DEFAULT) delete root.dataset.style; else root.dataset.style=use;
+        scene.dispose();
+        scene=make(use);
+        if(last){
+          const gone=(now()-last.at)/1000;
+          scene.setBuses(last.list.map(b=>b.sec==null?b:Object.assign({},b,{sec:Math.max(0,b.sec-gone)})));
+        }
+        return shown;
+      });
+    }
+    function setBuses(list){last={list,at:now()}; scene.setBuses(list)}
+    return {show,setBuses};
+  }
+
+  const api={createStyleSetting,createLoader,createSwitcher,LIST,DEFAULT,KEY,files:()=>[...new Set(LIST.flatMap(s=>s.files||[]))]};
   if(typeof module!=='undefined'&&module.exports) module.exports=api;
   else root.Styles=api;
 })(typeof window!=='undefined'?window:this);

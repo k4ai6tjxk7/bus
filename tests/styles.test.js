@@ -3,7 +3,7 @@
    只用假的儲存和假的 document，不碰瀏覽器。 */
 const test=require('node:test');
 const assert=require('node:assert/strict');
-const {createStyleSetting,createLoader,LIST,DEFAULT,KEY}=require('../styles.js');
+const {createStyleSetting,createLoader,createSwitcher,LIST,DEFAULT,KEY}=require('../styles.js');
 
 const mem=init=>{const d=Object.assign({},init); return {d,get:k=>d[k],set:(k,v)=>{d[k]=v}}};
 const LIST2=[{id:'classic',name:'原版',desc:'a'},{id:'toy',name:'玩具',desc:'b',files:['styles/kit.js?v=1','styles/toy.js?v=1'],font:'Foo'},
@@ -70,4 +70,92 @@ test('每款風格的檔案都在 styles/ 裡，而且帶版本號', ()=>{
     assert.match(f,/^styles\/[a-z]+\.js\?v=\d{8}[a-z]$/,f);
     assert.ok(fs.existsSync(path.join(__dirname,'..',f.split('?')[0])),f+' 不存在');
   }
+});
+
+/* ---------- 換風格（createSwitcher）----------
+   假 loader：每次 load 都留著，由測試決定何時、成功或失敗 resolve。假畫法記下建立、班次、收掉。 */
+function rig(){
+  const loads=[], scenes=[], root={dataset:{}};
+  let t=1762394400000;          /* 不從 0 開始，記錯時間才測得出來 */
+  const load=id=>new Promise(res=>loads.push({id,res}));
+  const createScene=o=>{const s={style:o.style,opts:o,buses:[],disposed:false,setBuses(l){s.buses.push(l)},dispose(){s.disposed=true}}; scenes.push(s); return s};
+  const look=createSwitcher({load,createScene,sceneOpts:{host:'H',reduce:true},root,now:()=>t});
+  return {look,loads,scenes,root,clock:ms=>{t+=ms},live:()=>scenes.filter(s=>!s.disposed)};
+}
+
+test('建立時先畫原版；交給 createScene 的參數原樣轉交', ()=>{
+  const r=rig();
+  assert.deepEqual(r.scenes.map(s=>s.style),['classic']);
+  assert.deepEqual(r.scenes[0].opts,{host:'H',reduce:true,style:'classic'});
+  assert.equal(r.root.dataset.style,undefined);
+});
+
+test('載入完成才換場景與 data-style；只留一個場景', async ()=>{
+  const r=rig();
+  const p=r.look.show('toy');
+  await tick();
+  assert.equal(r.scenes.length,1,'還沒載完不換');
+  r.loads[0].res(true);
+  assert.equal(await p,'toy');
+  assert.deepEqual(r.scenes.map(s=>s.style),['classic','toy']);
+  assert.deepEqual(r.live().map(s=>s.style),['toy']);
+  assert.equal(r.root.dataset.style,'toy');
+  assert.equal(r.scenes[1].opts.host,'H');
+});
+
+test('載入中又換了別款：只畫最後選的那款，先載完的不換', async ()=>{
+  const r=rig();
+  const a=r.look.show('toy'), b=r.look.show('toy2');
+  r.loads[0].res(true);
+  assert.equal(await a,'classic');
+  assert.equal(r.scenes.length,1);
+  r.loads[1].res(true);
+  assert.equal(await b,'toy2');
+  assert.deepEqual(r.scenes.map(s=>s.style),['classic','toy2']);
+  /* 換回去：後選的先載完、先選的後載完也一樣 */
+  const c=r.look.show('toy'), d=r.look.show('classic');
+  r.loads[3].res(true); assert.equal(await d,'classic');
+  r.loads[2].res(true); assert.equal(await c,'classic');
+  assert.deepEqual(r.live().map(s=>s.style),['classic']);
+  assert.equal(r.root.dataset.style,undefined);
+});
+
+test('載入失敗就維持原版；之後選別款照常換', async ()=>{
+  const r=rig();
+  const p=r.look.show('toy'); r.loads[0].res(false);
+  assert.equal(await p,'classic');
+  assert.equal(r.scenes.length,1,'已經是原版，不重建場景');
+  assert.equal(r.root.dataset.style,undefined);
+  const q=r.look.show('toy2'); r.loads[1].res(true); await q;
+  const z=r.look.show('toy'); r.loads[2].res(false);
+  assert.equal(await z,'classic','已是別款時失敗也退回原版');
+  assert.deepEqual(r.live().map(s=>s.style),['classic']);
+  assert.equal(r.root.dataset.style,undefined);
+});
+
+test('選同一款不重建場景', async ()=>{
+  const r=rig();
+  const p=r.look.show('toy'); r.loads[0].res(true); await p;
+  const q=r.look.show('toy'); r.loads[1].res(true); assert.equal(await q,'toy');
+  assert.equal(r.scenes.length,2);
+});
+
+test('班次交給目前場景；換風格時扣掉經過的秒數，不扣成負數，沒有秒數的不動', async ()=>{
+  const r=rig();
+  const list=[{name:'L1',sec:100,hot:false},{name:'L2',sec:null},{name:'L3',sec:5,hot:true}];
+  r.look.setBuses(list);
+  assert.deepEqual(r.scenes[0].buses,[list]);
+  r.clock(30000);
+  const p=r.look.show('toy'); r.loads[0].res(true); await p;
+  assert.deepEqual(r.scenes[1].buses,[[{name:'L1',sec:70,hot:false},{name:'L2',sec:null},{name:'L3',sec:0,hot:true}]]);
+  assert.equal(list[0].sec,100,'不改原本的資料');
+  r.look.setBuses([{name:'L9',sec:9}]);
+  assert.deepEqual(r.scenes[1].buses.at(-1),[{name:'L9',sec:9}]);
+  assert.equal(r.scenes[0].buses.length,1,'收掉的場景不再收到班次');
+});
+
+test('還沒有班次就換風格：新場景不收到班次', async ()=>{
+  const r=rig();
+  const p=r.look.show('toy'); r.loads[0].res(true); await p;
+  assert.deepEqual(r.scenes[1].buses,[]);
 });
