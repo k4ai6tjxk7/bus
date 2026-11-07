@@ -195,9 +195,9 @@ $('btnSaveKey').onclick=async()=>{
     $('keyStatus').textContent='✓ 金鑰可以用了';
   }catch(e){$('keyStatus').textContent=e.kind==='nokey'?'請填入兩個欄位。':e.message}
 };
-/* 設定頁的操作：等額度時的提示，以及「沒金鑰」換成設定頁的說法 */
-const addOpts={onWait:(s,why)=>{$('addStatus').textContent=waitText(s,why,'繼續')}};
-const setErr=e=>{$('addStatus').textContent=e.kind==='nokey'?'請先儲存金鑰。':e.message};
+/* 設定頁的組合操作（新增、重找、換轉乘站、刪除）的規則與提示文字都在組合管理（manage.js）；這裡只畫、綁按鈕 */
+const pm=Manage.createPairManager({store,finder,usage,onStatus:t=>{$('addStatus').textContent=t}});
+const setErr=e=>{$('addStatus').textContent=Manage.errText(e)};
 
 const regionName=id=>Regions.get(id).name;
 function chips(p,leg2){
@@ -227,9 +227,9 @@ function renderPairs(){
     <div class="btns"><button class="btn" type="button" data-act="re" data-id="${esc(p.id)}">重找路線</button>${viaBtn?`<button class="btn" type="button" data-act="via" data-id="${esc(p.id)}">${viaBtn}</button>`:''}<button class="btn danger" type="button" data-act="del" data-id="${esc(p.id)}">刪除</button></div>${ask}${exw}
     <div class="exw vp" id="vp-${esc(p.id)}"></div></div>`}).join(''):'<div class="small">目前沒有組合。</div>';
 }
-/* 轉乘站候選清單：選一個再按確定。onPick(候選) */
+/* 轉乘站候選清單：選一個再按確定。pick＝組合管理給的 {cands, lead, confirm}；onPick(候選) */
 let pickSeq=0;
-function renderPicker(el,cands,lead,confirm,onPick){
+function renderPicker(el,{cands,lead,confirm},onPick){
   const nm='vp'+(++pickSeq);
   el.innerHTML=`<div class="note">${esc(lead)}</div>
     <fieldset class="cands"><legend>轉乘站（站數少的在前）</legend>
@@ -254,33 +254,20 @@ $('pairList').addEventListener('click',async e=>{
   if(b.dataset.act==='keep'){store.dismissDirect(p.id); keepScroll(); return}
   if(b.dataset.act==='del'){
     if(b.dataset.confirm!=='1'){b.dataset.confirm='1'; b.textContent='確定刪除'; return}
-    store.remove(p.id);
-    usage.forget(p.id); /* 這組的使用紀錄一起刪掉 */
+    pm.remove(p.id);
     renderPairs(); renderUsage();
   }else if(b.dataset.act==='via'){
     b.textContent='尋找中…';
-    try{
-      const cands=await finder.transferOptions(p,addOpts);
-      renderPairs();
-      if(cands===null) return; /* 這次沒查到：畫面維持原樣 */
-      const el=$('vp-'+p.id); if(!el) return;
-      if(!cands.length){el.innerHTML='<div class="note">找不到只轉一次車的轉乘站。</div>'; return}
-      renderPicker(el,cands,`${p.from} → ${p.to}：可以在下面這些站轉一次車`,c=>'改在'+c.via+'轉乘',c=>{
-        store.setVia(p.id,c.via,c.routes1,c.routes2);
-        renderPairs(); $('addStatus').textContent='';
-      });
-      el.scrollIntoView({block:'nearest'});
-    }catch(err){setErr(err); renderPairs()}
+    const r=await pm.transfers(p.id);
+    renderPairs();
+    const el=$('vp-'+p.id); if(!el) return;
+    if(r.none){el.innerHTML=`<div class="note">${esc(r.none)}</div>`; return}
+    if(!r.pick) return;
+    renderPicker(el,r.pick,c=>{pm.chooseVia(p.id,c); renderPairs()});
+    el.scrollIntoView({block:'nearest'});
   }else{
     b.textContent='尋找中…';
-    try{
-      const r=await finder.resolve(p,addOpts);
-      if(r){ /* null＝這次沒查到：畫面維持原樣 */
-        store.setRoutes(p.id,r.routes,r); $('addStatus').textContent='';
-        if(!p.via&&!r.routes.length) $('addStatus').textContent=`「${p.name}」找不到直達的路線，可以按「找轉乘站」。`;
-      }
-    }
-    catch(err){setErr(err)}
+    await pm.refind(p.id);
     renderPairs();
   }
 });
@@ -330,33 +317,11 @@ function bindSearch(btn,kw,sel){
 bindSearch('sFrom','kwFrom','selFrom'); bindSearch('sTo','kwTo','selTo');
 
 $('btnAdd').onclick=async()=>{
-  const from=$('selFrom').hidden?'':$('selFrom').value, to=$('selTo').hidden?'':$('selTo').value;
-  const name=$('pName').value.trim()||'組合 '+(store.list().length+1);
-  if(!from||!to){$('addStatus').textContent='請先搜尋並選擇上車站和下車站。';return}
-  if(store.list().length>=PairStore.PAIR_MAX){$('addStatus').textContent='最多只能存 '+PairStore.PAIR_MAX+' 組，請先刪除不用的組合。';return} /* 先擋，不浪費查詢 */
-  const region=$('pRegion').value;
-  $('viaPick').innerHTML='';
-  $('addStatus').textContent='正在找出符合的路線…';
-  try{
-    const found=await finder.forNewPair(region,from,to,addOpts);
-    if(!found){$('addStatus').textContent=''; return} /* 這次沒查到：畫面維持原樣 */
-    const {direct:r,cands}=found;
-    if(r.length||!cands.length){
-      store.add(name,from,to,r,{region});
-      $('addStatus').textContent=r.length?`已新增，找到 ${r.length} 條路線：${[...new Set(r.map(x=>x.name))].join('、')}。有不想搭的（例如比較繞），可以在上方這一組裡排除。`
-        :'已新增，但目前找不到直達、也找不到只轉一次車的路線。';
-      renderPairs(); return;
-    }
-    /* 沒有直達：列出轉乘站，選了才新增 */
-    $('addStatus').textContent='';
-    renderPicker($('viaPick'),cands,`${from} → ${to} 沒有直達的公車。可以在下面這些站轉一次車：`,c=>'用'+c.via+'轉乘，新增組合',c=>{
-      try{
-        store.add(name,from,to,c.routes1,{region,via:c.via,routes2:c.routes2});
-        $('addStatus').textContent=`已新增轉乘組合：在${c.via}轉乘。看板會先顯示第一段，到了${c.via}再按「看下一段」。`;
-        renderPairs();
-      }catch(e){$('addStatus').textContent=e.message}
-    });
-  }catch(e){setErr(e)}
+  const r=await pm.add({name:$('pName').value,region:$('pRegion').value,
+    from:$('selFrom').hidden?'':$('selFrom').value,to:$('selTo').hidden?'':$('selTo').value},()=>{$('viaPick').innerHTML=''});
+  if(r.changed) renderPairs();
+  /* 沒有直達：列出轉乘站，選了才新增 */
+  if(r.pick) renderPicker($('viaPick'),r.pick,c=>{if(pm.addWithVia(r.pick.input,c).changed) renderPairs()});
 };
 
 /* ---------- 啟動 ---------- */
