@@ -88,7 +88,7 @@ def label(url):
 
 # ---------- 網站與瀏覽器 ----------
 
-# 記下每次建立 3D 場景用哪款風格、交給場景的班次（名稱與秒數），比對換風格時班次有沒有正確轉交
+# 記下每次建立 3D 場景用哪款風格、交給場景的班次（名稱、秒數、是否將到站），比對換風格時班次有沒有正確轉交
 SCENE_SPY = '''(() => {
   window.__scenes = [];
   let real;
@@ -97,7 +97,7 @@ SCENE_SPY = '''(() => {
     real = Object.assign({}, v, {createScene(o) {
       const rec = {style: o.style, buses: []}; window.__scenes.push(rec);
       const s = create(o);
-      return {setBuses(l) { rec.buses.push(l.map(b => [b.name, b.sec == null ? null : Math.round(b.sec)])); s.setBuses(l); },
+      return {setBuses(l) { rec.buses.push(l.map(b => [b.name, b.sec == null ? null : Math.round(b.sec), !!b.hot])); s.setBuses(l); },
               dispose() { rec.disposed = true; s.dispose(); }};
     }});
   }});
@@ -273,6 +273,12 @@ def race_styles(a, b):
         p.wait_for_timeout(1500)
     return f
 
+def scene_now(key):
+    """目前場景最後一次收到的班次"""
+    def f(p, s):
+        s[key] = {'hero': p.inner_text('#hero'), 'buses': p.evaluate("() => { const r = window.__scenes[window.__scenes.length - 1]; return r.buses[r.buses.length - 1] || null }")}
+    return f
+
 def back(p, s):
     p.click('#btnBack')
     p.wait_for_timeout(600)
@@ -365,6 +371,8 @@ FLOWS = {
         'A15 連續來回切換三組（額度不夠時以前會排隊轉圈）': ([PA, PF, PC], 'pa', [wait(1500), mark('to f'), pick_now('pf', 'f'), mark('to c'), pick_now('pc', 'c'),
                                                    mark('to a'), pick_now('pa', 'a'), mark('to f'), pick_now('pf', 'f2'), mark('to c'), pick_now('pc', 'c2'), snap('end')]),
         'A16 設定頁 30 秒回看板：資料還新就不查': ([PA], 'pa', [wait(1500), settings, mark('+30s'), adv(30000), mark('back'), lambda p, s: (p.click('#btnBack'), p.wait_for_timeout(1200)), snap('board')]),
+        'A17 倒數跨過 3 分鐘：看板顯示將到站時，3D 場景也要收到將到站': ([PA], 'pa', [wait(1500), freeze, scene_now('t0'), quota_at(55000, 4),
+                        mark('+60s'), adv(60000), quota_at(110000, 4), mark('+100s'), adv(100000), scene_now('t165')]),
         'A13 全部排除': ([dict(PA, exclude=['L1'])], 'pa', [wait(1500), snap('ex'), mark('+65s'), adv(65000), snap('ex2')]),
     },
     'usage': {
