@@ -4,7 +4,7 @@ TDX 用假資料回應、時鐘用假的，所以每次跑的結果都一樣，�
 所有站名、路線都是假的。
 
 用法：python3 tools/compare/run.py <網站目錄> <輸出.json> [群組 ...]
-群組：route（找路線）、update（到站更新）、usage（使用習慣）；不給就全跑。
+群組：route（找路線）、update（到站更新）、usage（使用習慣）、style（畫面風格）；不給就全跑。
 瀏覽器：預設用 Playwright 自帶的 Chromium；要用別的，設環境變數 CHROME=<執行檔路徑>。"""
 import functools
 import http.server
@@ -88,6 +88,21 @@ def label(url):
 
 # ---------- 網站與瀏覽器 ----------
 
+# 記下每次建立 3D 場景用哪款風格、交給場景的班次（名稱與秒數），比對換風格時班次有沒有正確轉交
+SCENE_SPY = '''(() => {
+  window.__scenes = [];
+  let real;
+  Object.defineProperty(window, 'Scene', {configurable: true, get: () => real, set(v) {
+    const create = v.createScene;
+    real = Object.assign({}, v, {createScene(o) {
+      const rec = {style: o.style, buses: []}; window.__scenes.push(rec);
+      const s = create(o);
+      return {setBuses(l) { rec.buses.push(l.map(b => [b.name, b.sec == null ? null : Math.round(b.sec)])); s.setBuses(l); },
+              dispose() { rec.disposed = true; s.dispose(); }};
+    }});
+  }});
+})();'''
+
 class Quiet(http.server.SimpleHTTPRequestHandler):
     def log_message(self, *a):
         pass
@@ -120,8 +135,14 @@ def run(browser, port, pairs, cur, steps, fail_eta=False, extra=None):
             return r.fulfill(status=500, body='boom')
         r.fulfill(json=handle(url))
     ctx.route('https://tdx.transportdata.tw/**', route)
+    ctx.route('https://fonts.googleapis.com/**', lambda r: r.abort())  # 字型不影響比對，也不連外
+    extra = dict(extra or {})
+    block = extra.pop('_block', None)  # 模擬某個風格檔載入失敗
+    if block:
+        ctx.route(f'**/{block}*', lambda r: r.fulfill(status=404, body='no'))
+    ctx.add_init_script(SCENE_SPY)
     init = {'bus.cfg': {'id': 'id', 'secret': 'sec'}, 'bus.tok': {'v': 'T', 'exp': 4102444800000},
-            'bus.pairs': pairs, 'bus.cur': cur, 'bus.tip': True, **(extra or {})}
+            'bus.pairs': pairs, 'bus.cur': cur, 'bus.tip': True, **extra}
     ctx.add_init_script('if(!sessionStorage.getItem("seeded")){sessionStorage.setItem("seeded","1");'
                         + ''.join(f'localStorage.setItem({json.dumps(k)},{json.dumps(json.dumps(v))});' for k, v in init.items()) + '}')
     page = ctx.new_page()
@@ -218,6 +239,39 @@ def pick_now(pid, key):
 def quota_at(ms, n):
     """把查詢額度紀錄塞滿，讓之後的自動更新被跳過"""
     return lambda p, s: p.evaluate("([t,n]) => localStorage.setItem('bus.calls', JSON.stringify(Array(n).fill(t)))", [T0 + ms, n])
+
+def freeze(p, s):
+    """停住假時鐘（之後只靠 adv 前進），扣秒的結果才不受實際執行速度影響"""
+    p.clock.pause_at((T0 + 5000) / 1000)
+    p.wait_for_timeout(300)
+
+def style_snap(key):
+    def f(p, s):
+        s[key] = {'dataStyle': p.evaluate("() => document.documentElement.dataset.style || ''"),
+                  'canvases': p.evaluate("() => document.querySelectorAll('#scene canvas').length"),
+                  'sceneHidden': p.evaluate("() => document.getElementById('scene').hidden"),
+                  'scripts': p.evaluate("() => [...document.querySelectorAll('script[src^=\"styles/\"]')].map(e => e.getAttribute('src'))"),
+                  'scenes': p.evaluate("() => window.__scenes"),
+                  'hero': p.inner_text('#hero')}
+    return f
+
+def pick_style(sid, ms=1500):
+    def f(p, s):
+        p.check(f'#styleList input[value="{sid}"]')
+        p.wait_for_timeout(ms)
+    return f
+
+def race_styles(a, b):
+    """同一個 JS 工作裡連續換兩款：前一款一定還沒載完就又換了"""
+    def f(p, s):
+        p.evaluate("""([a, b]) => { for (const id of [a, b]) { const el = document.querySelector(`#styleList input[value="${id}"]`);
+            el.checked = true; el.dispatchEvent(new Event('change', {bubbles: true})); } }""", [a, b])
+        p.wait_for_timeout(1500)
+    return f
+
+def back(p, s):
+    p.click('#btnBack')
+    p.wait_for_timeout(600)
 
 def usage_snap(key):
     def f(p, s):
@@ -322,6 +376,16 @@ FLOWS = {
         'U8 離開 31 分鐘回來被自動換組合：停留 20 秒記到新組合': ([PA, PF], 'pa', [wait(1500), usage_snap('open'), vis('hidden'), adv(31 * 60000, 300), vis('visible'), wait(1500), usage_snap('back'), adv(25000), usage_snap('t25')], False,
                                                     U(('pf', T0 - D + 75 * 60000), ('pf', T0 - 2 * D + 75 * 60000), ('pf', T0 - 3 * D + 75 * 60000))),
         'U9 從選單切換組合：停留 20 秒記到新組合': ([PA, PF], 'pa', [wait(1500), pick_pair('pf'), usage_snap('switched'), adv(25000), usage_snap('t25')], False, None),
+    },
+    'style': {
+        'S1 開啟時就是動漫風格：先畫原版、載完換動漫，班次轉交': ([PA], 'pa', [wait(1500), freeze, style_snap('open'), mark('+30s'), adv(30000), style_snap('t30')], False, {'bus.style': 'anime'}),
+        'S2 看板上換風格：扣掉經過秒數、只留一個畫布、連續換只畫最後一款': ([PA], 'pa', [wait(1500), freeze, style_snap('classic'), mark('+20s'), adv(20000), settings,
+                        mark('anime'), pick_style('anime'), back, style_snap('anime'), settings, mark('pixel'), pick_style('pixel'),
+                        mark('picture then neon'), race_styles('picture', 'neon'), back, style_snap('neon'),
+                        settings, mark('classic'), pick_style('classic'), back, style_snap('classic2')]),
+        'S3 風格檔載入失敗：維持原版，換別款照常': ([PA], 'pa', [wait(1500), freeze, style_snap('open'), settings, grab('checked', '#styleList'),
+                        lambda p, s: s.__setitem__('checkedId', p.evaluate("() => document.querySelector('#styleList input:checked').value")),
+                        mark('mini'), pick_style('mini'), back, style_snap('mini')], False, {'bus.style': 'pixel', '_block': 'styles/pixel.js'}),
     },
 }
 

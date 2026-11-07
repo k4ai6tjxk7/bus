@@ -33,6 +33,7 @@ python3 tools/compare/diff.py tools/compare/out/before.json tools/compare/out/af
 | `route` | 找路線：重找、新增組合、換轉乘站、找轉乘站 |
 | `update` | 到站更新：倒數、切段、切換組合、閒置、離開後回來、錯誤、示範資料 |
 | `usage` | 使用習慣：自動選組合、停留 20 秒才記、刪除與清除 |
+| `style` | 畫面風格：開啟時就是別款、看板上換風格（扣秒、只留一個畫布）、風格檔載入失敗 |
 
 `diff.py` 完全一樣時結束代碼是 0，有差異或 JS 錯誤時是 1。`out/` 已經被 `.gitignore` 擋住，結果不會進 repo。
 
