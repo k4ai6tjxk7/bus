@@ -22,14 +22,14 @@
    list 只在測試時傳，平常用 LIST。 */
 (function(root){
   const KEY='bus.style', DEFAULT='classic';
-  /* files：依序載入的檔案（相對網址，帶版本號）；font：Google Fonts 的 family 參數。原版兩者都沒有 */
+  /* files：依序載入的檔案（相對網址，帶版本號）；font：本機字型 CSS（styles/fonts/，每個權重一個，相對網址帶版本號，由 tools/fonts.js 產生）。原版兩者都沒有 */
   const KIT='styles/kit.js?v=20261107b';
   const LIST=[
     {id:'classic',name:'原版',desc:'LED 看板與點陣道路'},
-    {id:'anime',name:'動漫',desc:'卡通描邊、藍天白雲、會揮手的 Q 版小人',files:[KIT,'styles/anime.js?v=20261107c'],font:'Zen+Maru+Gothic:wght@500;700;900'},
+    {id:'anime',name:'動漫',desc:'卡通描邊、藍天白雲、會揮手的 Q 版小人',files:[KIT,'styles/anime.js?v=20261107c'],font:['styles/fonts/zen-maru-gothic-500.css?v=20261108a','styles/fonts/zen-maru-gothic-700.css?v=20261108a','styles/fonts/zen-maru-gothic-900.css?v=20261108a']},
     {id:'mini',name:'微縮',desc:'粉彩玩具小鎮、圓角公車，像桌上的模型',files:[KIT,'styles/mini.js?v=20261107c']},
     {id:'pixel',name:'像素',desc:'16 位元電玩畫面、RPG 對話框',files:[KIT,'styles/pixel.js?v=20261107c']},
-    {id:'picture',name:'繪本',desc:'紙張質感、手寫字、柔和的顏色',files:[KIT,'styles/picture.js?v=20261107c'],font:'LXGW+WenKai+TC:wght@400;700'},
+    {id:'picture',name:'繪本',desc:'紙張質感、手寫字、柔和的顏色',files:[KIT,'styles/picture.js?v=20261107c'],font:['styles/fonts/lxgw-wenkai-tc-400.css?v=20261108a','styles/fonts/lxgw-wenkai-tc-700.css?v=20261108a']},
     {id:'neon',name:'霓虹',desc:'城市夜景與發光招牌，淺色模式是黃昏',files:[KIT,'styles/neon.js?v=20261107c']},
   ];
 
@@ -56,9 +56,10 @@
       if(!s) return false;
       if(s.font&&!fonts[id]){
         fonts[id]=true;
-        const l=doc.createElement('link'); l.rel='stylesheet';
-        l.href='https://fonts.googleapis.com/css2?family='+s.font+'&display=swap';
-        doc.head.appendChild(l);
+        for(const href of s.font){
+          const l=doc.createElement('link'); l.rel='stylesheet'; l.href=href;
+          doc.head.appendChild(l);
+        }
       }
       for(const f of s.files||[]) if(!await script(f)) return false;
       return true;
