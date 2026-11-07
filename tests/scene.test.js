@@ -36,6 +36,19 @@ test('畫面風格：用登記過的畫法；沒登記過的風格畫原版；�
   assert.doesNotThrow(()=>{s.setBuses([]); s.dispose()});
 });
 
+test('畫法出錯隱藏場景後，換成正常的風格，場景要再出現', ()=>{
+  const {register}=require('../scene.js');
+  register('classic',()=>({setBuses(){},dispose(){}}));
+  register('broken',()=>{throw new Error('壞了')});
+  const host={hidden:false}, base={host,tagsEl:{},THREE:{},reduce:false};
+  createScene(Object.assign({style:'broken'},base));
+  assert.equal(host.hidden,true);
+  createScene(Object.assign({style:'classic'},base));
+  assert.equal(host.hidden,false);
+  createScene(Object.assign({style:'broken'},base));
+  assert.equal(host.hidden,true);
+});
+
 test('小人的動作：將到站一直揮手；有車每 5 秒揮 1.5 秒；沒車不揮手、偶爾望向路', ()=>{
   const {wave}=require('../scene.js');
   const up=a=>a>2;

@@ -4,7 +4,7 @@
    只負責畫，不知道到站更新、組合、TDX；app.js 把看板內容的 buses 交進來。
 
    createScene({host, tagsEl, THREE, reduce, style}) 回傳 {setBuses(list), dispose()}
-     host     放 canvas 的元素；沒有 WebGL 時會被隱藏，看板照常運作
+     host     放 canvas 的元素；沒有 WebGL、或這款畫法出錯時會被隱藏，看板照常運作（換風格時再顯示）
      tagsEl   放路線標籤（HTML）的元素
      reduce   是否開啟「減少動態效果」：只在資料變動時畫一格，不跑動畫
      style    畫面風格 id；沒有註冊過的風格一律畫原版
@@ -34,6 +34,7 @@
     const {host,THREE}=opts;
     if(!THREE){host.hidden=true;return NONE}
     const f=FACTORIES[opts.style]||FACTORIES.classic;
+    host.hidden=false;  /* 上一款畫法出錯時隱藏過，換風格要再顯示 */
     try{return f(opts)}catch(e){host.hidden=true;return NONE}
   }
 
