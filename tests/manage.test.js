@@ -146,7 +146,7 @@ test('換轉乘站：找不到候選、這次沒查到、錯誤', async ()=>{
 
 test('刪除組合連同它的使用習慣', ()=>{
   const r=rig({pairs:[ready('a'),ready('b')]});
-  r.pm.remove('a');
+  assert.deepEqual(r.pm.remove('a'),{changed:true},'和其他操作一樣回傳 changed');
   assert.deepEqual(r.store.list().map(p=>p.id),['b']);
   assert.deepEqual(r.forgot,['a']);
 });

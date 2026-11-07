@@ -9,10 +9,10 @@ const LS_ADAPTER={get:k=>LS.get(k),set:(k,v)=>LS.set(k,v)};
    3D 場景只負責畫（scene.js）；看板內容的 buses 交給它。沒有 WebGL 時場景會隱藏，看板照常運作。
    畫面風格整支手機共用；換風格（載入、換場景、班次轉交）全部交給 styles.js 的 createSwitcher。 */
 const styleSetting=Styles.createStyleSetting({storage:LS_ADAPTER});
-const look=Styles.createSwitcher({load:Styles.createLoader({doc:document}),createScene:Scene.createScene,
+const styleSwitcher=Styles.createSwitcher({load:Styles.createLoader({doc:document}),createScene:Scene.createScene,
   sceneOpts:{host:$('scene'),tagsEl:$('tags'),THREE:window.THREE,reduce:matchMedia('(prefers-reduced-motion: reduce)').matches},
   root:document.documentElement,now:()=>Date.now()});
-look.show(styleSetting.current());
+styleSwitcher.show(styleSetting.current());
 /* 組合的讀寫、驗證全部交給組合儲存（pairs.js） */
 const store=PairStore.createPairStore(LS_ADAPTER);
 /* 和 TDX 打交道（金鑰、token、查詢額度、錯誤訊息）全部交給 TDX 查詢（tdx.js） */
@@ -111,7 +111,7 @@ function etaHtml(e,cls,hero){
 }
 function renderBoard(b,scene){
   renderHidden();
-  if(scene) look.setBuses(b.buses);
+  if(scene) styleSwitcher.setBuses(b.buses);
   if(b.state!=='ok'){
     $('hero').innerHTML=`<div class="board-empty">${esc(EMPTY_TEXT[b.state])}</div>`;$('list').hidden=true;$('otherTitle').hidden=true;return;
   }
@@ -290,7 +290,7 @@ function renderStyles(){
   $('styleList').innerHTML=list.map(s=>`<label class="cand"><input type="radio" name="style" value="${esc(s.id)}"${s.id===cur?' checked':''}>
     <span><b>${esc(s.name)}</b><small>${esc(s.desc)}</small></span></label>`).join('');
 }
-$('styleList').onchange=e=>{const id=e.target.value; if(styleSetting.set(id)) look.show(id)};
+$('styleList').onchange=e=>{const id=e.target.value; if(styleSetting.set(id)) styleSwitcher.show(id)};
 
 /* 生活圈：預設用最後新增那組的生活圈；換生活圈時站名要重新搜尋 */
 function renderRegions(){

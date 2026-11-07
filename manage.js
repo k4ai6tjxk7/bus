@@ -28,7 +28,7 @@
 
   function createPairManager({store,finder,usage,onStatus}){
     /* 使用者操作排隊等額度時，提示多久後繼續 */
-    const opts={onWait:(s,why)=>onStatus(waitText(s,why,'繼續'))};
+    const waitHint={onWait:(s,why)=>onStatus(waitText(s,why,'繼續'))};
     const find=id=>store.list().find(p=>p.id===id);
 
     async function add({name,from,to,region},onStart){
@@ -38,7 +38,7 @@
       if(onStart) onStart();
       onStatus('正在找出符合的路線…');
       try{
-        const found=await finder.forNewPair(region,from,to,opts);
+        const found=await finder.forNewPair(region,from,to,waitHint);
         if(!found){onStatus(''); return {}} /* 這次沒查到 */
         const {direct:r,cands}=found;
         if(r.length||!cands.length){
@@ -64,7 +64,7 @@
     async function refind(id){
       const p=find(id); if(!p) return {};
       try{
-        const r=await finder.resolve(p,opts);
+        const r=await finder.resolve(p,waitHint);
         if(!r) return {}; /* 這次沒查到：畫面維持原樣 */
         store.setRoutes(p.id,r.routes,r);
         onStatus(!p.via&&!r.routes.length?`「${p.name}」找不到直達的路線，可以按「找轉乘站」。`:'');
@@ -75,7 +75,7 @@
     async function transfers(id){
       const p=find(id); if(!p) return {};
       try{
-        const cands=await finder.transferOptions(p,opts);
+        const cands=await finder.transferOptions(p,waitHint);
         if(cands===null) return {}; /* 這次沒查到：畫面維持原樣 */
         if(!cands.length) return {none:'找不到只轉一次車的轉乘站。'};
         return {pick:{cands,lead:`${p.from} → ${p.to}：可以在下面這些站轉一次車`,confirm:c=>'改在'+c.via+'轉乘'}};
@@ -91,6 +91,7 @@
     function remove(id){
       store.remove(id);
       usage.forget(id); /* 這組的使用紀錄一起刪掉 */
+      return {changed:true};
     }
 
     return {add,addWithVia,refind,transfers,chooseVia,remove};
