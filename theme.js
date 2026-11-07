@@ -42,11 +42,17 @@
     };
   }
 
-  const api={createTheme,KEY,DEFAULT,MODES};
+  /* 被嵌入（防嵌入）：最上層視窗不是自己就是被嵌在別的網頁裡；跨來源嵌入時讀 top 會丟錯，也當被嵌入。
+     結果寫在 <html data-framed> 並匯出成 Theme.framed，畫面（CSS 只顯示「請直接開啟」）與事件（app.js 啟動前結束）都讀它。 */
+  function isFramed(win){try{return win.top!==win.self}catch(e){return true}}
+
+  const api={createTheme,isFramed,KEY,DEFAULT,MODES};
   if(typeof module!=='undefined'&&module.exports){module.exports=api; return}
   const storage={get(k){try{const v=localStorage.getItem(k);return v?JSON.parse(v):undefined}catch(e){return undefined}},
                  set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
   const mq=root.matchMedia?root.matchMedia('(prefers-color-scheme: dark)'):null;
+  api.framed=isFramed(root);
+  if(api.framed) document.documentElement.setAttribute('data-framed','');
   api.page=createTheme({storage,mq,root:document.documentElement,meta:document.querySelector('meta[name="theme-color"]')});
   root.Theme=api;
 })(typeof window!=='undefined'?window:this);

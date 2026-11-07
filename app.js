@@ -1,4 +1,7 @@
 'use strict';
+/* 被嵌入別的網頁時（theme.js 判斷，index.html 只顯示「請直接開啟」）在建 3D 場景、讀組合、查 TDX、記使用習慣之前結束 */
+(function(){
+if(Theme.framed) return;
 const $=id=>document.getElementById(id);
 const LS={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},
           set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
@@ -351,3 +354,4 @@ document.addEventListener('visibilitychange',()=>{
   /* 自動換了組合，停留時間要從新組合重新算 */
   updater.back(()=>{const changed=autoPick(); renderChips(); if(changed) viewStart(); return changed});
 });
+})();
