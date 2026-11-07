@@ -30,7 +30,7 @@
      message   提示訊息（純文字，空字串＝不顯示）
      stampAt   最後一次拿到到站資料的時間（null＝還沒有）
      stale     資料是否太舊或有問題       spinning 是否正在查
-     scene     這次要不要更新 3D 光點（倒數時 3D 自己會動，不用更新）
+     scene     這次要不要把班次交給 3D 場景（倒數時也交：跨過 3 分鐘時「將到站」要和看板同時變）
    所有文字都是純文字，畫 HTML 時再跳脫。
 
    到站資料記住「是查哪些站牌」：路線改了（重找、換轉乘站、改直達）就自動失效，不用呼叫端清除；
@@ -92,11 +92,11 @@
       emit(scene); return true;
     }
     function loading(text){screen={loading:text,board:null}; legNote=null}
-    /* 本地倒數：兩次查詢之間畫面自己扣秒數 */
+    /* 本地倒數：兩次查詢之間畫面自己扣秒數；扣過秒的班次也交給 3D 場景，「將到站」只由看板內容決定 */
     function countdown(){
       const p=store.current();
       if(!last||!p||last.pid!==p.id) return;
-      if(showLast(false,true)) return;
+      if(showLast(true,true)) return;
       /* 路線改了，手上的到站資料對不上：顯示載入中，這次心跳就重查 */
       kept.delete(p.id); last=null; lastTry=0; loading(TEXT.loading); emit(false);
     }

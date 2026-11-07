@@ -89,13 +89,30 @@ test('下次更新從拿到資料的時間起算（排隊等很久時不會一�
   assert.equal(s.etas(),1,'拿到資料後才 50 秒，還不用查');
 });
 
-test('倒數：兩次查詢之間畫面自己扣秒數，不查詢、不更新 3D 光點', async()=>{
+test('倒數：兩次查詢之間畫面自己扣秒數，不查詢；扣過秒的班次也交給 3D 場景', async()=>{
   const s=setup();
   await s.up.start(); await settle();
   await s.at(40000);
-  assert.equal(hero(s.view()),'L1 6分'); assert.equal(s.view().scene,false);
+  assert.equal(hero(s.view()),'L1 6分'); assert.equal(s.view().scene,true);
+  assert.deepEqual(s.view().board.buses,[{name:'L1',sec:360,hot:false}]);
   await s.at(55000);
   assert.equal(hero(s.view()),'L1 5分'); assert.equal(s.etas(),1);
+});
+
+test('倒數跨過 3 分鐘時自動更新被跳過：看板變將到站，交給 3D 場景的班次也同時變將到站', async()=>{
+  let skip=false;
+  const s=setup({eta:(r,o)=>o.auto&&skip?null:[row('L1','S1',230)]});
+  await s.up.start(); await settle();         /* 230 秒：還不是將到站，60 秒後才再查 */
+  skip=true;                                  /* 額度不夠：之後的自動更新都被跳過，只靠本地倒數 */
+  await s.at(40000);
+  assert.equal(hero(s.view()),'L1 3分'); assert.deepEqual(s.view().board.buses,[{name:'L1',sec:190,hot:false}]);
+  const n=s.views.length;
+  await s.at(55000);
+  assert.equal(s.etas(),2,'跨過 3 分鐘時更新頻率變 30 秒，試著查但被跳過');
+  assert.equal(hero(s.view()),'L1 將到站');
+  const toScene=s.views.slice(n).filter(v=>v.scene&&v.board);
+  assert.ok(toScene.length,'有把班次交給 3D 場景');
+  assert.deepEqual(toScene[toScene.length-1].board.buses,[{name:'L1',sec:175,hot:true}]);
 });
 
 test('自動更新額度不夠被跳過：不推進下次查詢時間，下次心跳再試', async()=>{

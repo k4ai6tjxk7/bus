@@ -103,7 +103,7 @@ function renderHidden(){
 }
 $('hidNote').addEventListener('click',()=>{const p=curPair(); if(p) openSettings(true,(p.via&&updater.leg()===2?'ex2-':'ex-')+p.id)});
 
-/* 把看板內容畫出來；所有文字都在這裡跳脫。scene=true 才更新 3D 光點（倒數時 3D 自己會動） */
+/* 把看板內容畫出來；所有文字都在這裡跳脫。scene=true 才把班次交給 3D 場景（載入中、錯誤時維持原樣） */
 const EMPTY_TEXT={noBus:'目前沒有車',allExcluded:'可搭的路線都已排除',noRoutes:'找不到同時經過這兩站的路線'};
 function etaHtml(e,cls,hero){
   return e.kind==='min'?`<div class="${cls}"><span class="n">${e.n}</span><span class="u">分</span></div>`
