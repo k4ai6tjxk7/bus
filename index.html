@@ -8,8 +8,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="等哪班">
-<meta name="theme-color" content="#e9eef0" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#0c1114" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#e9eef0">
+<script src="theme.js?v=20261107a"></script>
 <title>等哪班</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -27,12 +27,13 @@
   --r:16px;
   color-scheme:light;
 }
-@media (prefers-color-scheme:dark){:root{
+/* 深色：theme.js 依設定（自動時跟系統）在 <html> 寫 data-theme */
+:root[data-theme="dark"]{
   --bg:#0c1114; --surface:#141c21; --ink:#e4ebef; --muted:#8c9ca6; --line:#24313a;
   --route:#4fb3a4;
   --board:#05080a; --board-edge:#1d282f; --board-ink:#b8c4ca;
   --led:#ffb21e; --led-glow:rgba(255,178,30,.45); --led-hot:#ff7a4d; --led-off:#4d575c;
-  --warn-bg:#33280c; --warn-ink:#ffd88a; color-scheme:dark}}
+  --warn-bg:#33280c; --warn-ink:#ffd88a; color-scheme:dark}
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 html,body{margin:0}
@@ -305,7 +306,7 @@ input,select{font:inherit;font-size:16px;color:var(--ink);background:var(--bg);b
 <script src="usage.js?v=20261106a"></script>
 <script src="updater.js?v=20261107b"></script>
 <script src="manage.js?v=20261107b"></script>
-<script src="styles.js?v=20261107e"></script>
+<script src="styles.js?v=20261107f"></script>
 <script src="scene.js?v=20261107d"></script>
 <script src="app.js?v=20261107h"></script>
 </body>

@@ -7,9 +7,9 @@
   K.css('pixel',`
 :root[data-style="pixel"] #board{--p-win:#29366f;--p-edge:#f4f4f4;--p-bgc:#1a1c2c;--p-ink:#f4f4f4;--p-muted:#94b0c2;--p-num:#ffcd75;--p-hot:#ef7d57;--sky1:#1a1c2c;--sky2:#3b5dc9;
   --ink:var(--p-ink);--muted:var(--p-muted);--surface:var(--p-win);font-family:var(--f-led)}
-@media (prefers-color-scheme:light){:root[data-style="pixel"] #board{--p-win:#f4f4f4;--p-edge:#1a1c2c;--p-bgc:#94b0c2;--p-ink:#1a1c2c;--p-muted:#333c57;--p-num:#b86f50;--sky1:#41a6f6;--sky2:#73eff7;--ink:#1a1c2c;--muted:#333c57}}
+:root[data-theme="light"][data-style="pixel"] #board{--p-win:#f4f4f4;--p-edge:#1a1c2c;--p-bgc:#94b0c2;--p-ink:#1a1c2c;--p-muted:#333c57;--p-num:#b86f50;--sky1:#41a6f6;--sky2:#73eff7;--ink:#1a1c2c;--muted:#333c57}
 :root[data-style="pixel"] body:has(#board:not([hidden])){background:#94b0c2}
-@media (prefers-color-scheme:dark){:root[data-style="pixel"] body:has(#board:not([hidden])){background:#1a1c2c}}
+:root[data-theme="dark"][data-style="pixel"] body:has(#board:not([hidden])){background:#1a1c2c}
 :root[data-style="pixel"] .board,:root[data-style="pixel"] .list{background:var(--p-win);color:var(--p-ink);border:3px solid var(--p-edge);border-radius:2px;box-shadow:0 0 0 3px var(--p-bgc),0 0 0 6px var(--p-edge);margin:6px}
 :root[data-style="pixel"] .board{padding:0}
 :root[data-style="pixel"] .board::before,:root[data-style="pixel"] .scene::after{display:none}

@@ -7,9 +7,9 @@
   K.css('anime',`
 :root[data-style="anime"] #board{--a-bg:#e6f4ff;--a-card:#ffffff;--a-ink:#1f2330;--a-muted:#5a6275;--a-line:#1f2330;--a-bus:#ffc83a;--a-hot:#ff6450;--a-mint:#2fb5a8;--sky1:#6ec3ff;--sky2:#dff3ff;
   --ink:var(--a-ink);--muted:var(--a-muted);--surface:var(--a-card);font-family:"Zen Maru Gothic",var(--f-body)}
-@media (prefers-color-scheme:dark){:root[data-style="anime"] #board{--a-bg:#141830;--a-card:#232945;--a-ink:#f3f1ff;--a-muted:#a9acc9;--a-line:#080a16;--a-mint:#4fd1c3;--sky1:#161a45;--sky2:#6b4677}}
+:root[data-theme="dark"][data-style="anime"] #board{--a-bg:#141830;--a-card:#232945;--a-ink:#f3f1ff;--a-muted:#a9acc9;--a-line:#080a16;--a-mint:#4fd1c3;--sky1:#161a45;--sky2:#6b4677}
 :root[data-style="anime"] body:has(#board:not([hidden])){background:#e6f4ff}
-@media (prefers-color-scheme:dark){:root[data-style="anime"] body:has(#board:not([hidden])){background:#141830}}
+:root[data-theme="dark"][data-style="anime"] body:has(#board:not([hidden])){background:#141830}
 :root[data-style="anime"] .board{background:var(--a-card);color:var(--a-ink);border:3px solid var(--a-line);border-radius:22px;box-shadow:5px 5px 0 var(--a-line);padding:0}
 :root[data-style="anime"] .board::before,:root[data-style="anime"] .scene::after{display:none}
 :root[data-style="anime"] .board-head{position:absolute;top:10px;left:10px;right:10px;z-index:2;letter-spacing:0;font-size:13px;font-weight:700}

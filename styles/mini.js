@@ -7,9 +7,9 @@
   K.css('mini',`
 :root[data-style="mini"] #board{--m-card:#ffffff;--m-ink:#2c3a33;--m-muted:#6d7d73;--m-bus:#ffd36b;--m-hot:#ff8a73;--m-mint:#7cc6a4;--m-soft:rgba(60,80,70,.12);--m-chip:#eef3ea;--sky1:#cfe8f5;--sky2:#f3f7ee;
   --ink:var(--m-ink);--muted:var(--m-muted);--surface:var(--m-card)}
-@media (prefers-color-scheme:dark){:root[data-style="mini"] #board{--m-card:#1f2a33;--m-ink:#e7eef0;--m-muted:#93a3a9;--m-soft:rgba(0,0,0,.35);--m-chip:#151d24;--sky1:#1d2a44;--sky2:#3a4a5c}}
+:root[data-theme="dark"][data-style="mini"] #board{--m-card:#1f2a33;--m-ink:#e7eef0;--m-muted:#93a3a9;--m-soft:rgba(0,0,0,.35);--m-chip:#151d24;--sky1:#1d2a44;--sky2:#3a4a5c}
 :root[data-style="mini"] body:has(#board:not([hidden])){background:#eef3ea}
-@media (prefers-color-scheme:dark){:root[data-style="mini"] body:has(#board:not([hidden])){background:#151d24}}
+:root[data-theme="dark"][data-style="mini"] body:has(#board:not([hidden])){background:#151d24}
 :root[data-style="mini"] .board{background:var(--m-card);color:var(--m-ink);border:0;border-radius:26px;box-shadow:0 10px 24px var(--m-soft);padding:0}
 :root[data-style="mini"] .board::before,:root[data-style="mini"] .scene::after{display:none}
 :root[data-style="mini"] .board-head{position:absolute;top:12px;left:14px;right:14px;z-index:2;letter-spacing:0;font-weight:700;color:#2c3a33}

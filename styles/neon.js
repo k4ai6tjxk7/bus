@@ -7,10 +7,10 @@
   K.css('neon',`
 :root[data-style="neon"] #board{--n-card:#100d22;--n-ink:#f2ecff;--n-muted:#8f86b3;--n-cyan:#3df2ff;--n-pink:#ff3d8b;--n-bus:#ffd23f;--n-glow:.9;--sky1:#05040c;--sky2:#2a1250;
   --ink:var(--n-ink);--muted:var(--n-muted);--surface:var(--n-card)}
-@media (prefers-color-scheme:light){:root[data-style="neon"] #board{--n-card:#36255a;--n-ink:#fff1ea;--n-muted:#c9b3d9;--n-glow:.55;--sky1:#3b2a6e;--sky2:#ff9566}}
+:root[data-theme="light"][data-style="neon"] #board{--n-card:#36255a;--n-ink:#fff1ea;--n-muted:#c9b3d9;--n-glow:.55;--sky1:#3b2a6e;--sky2:#ff9566}
 :root[data-style="neon"] body:has(#board:not([hidden])){background:#2a1d45}
-@media (prefers-color-scheme:dark){:root[data-style="neon"] body:has(#board:not([hidden])){background:#07060f}}
-@media (prefers-color-scheme:light){:root[data-style="neon"] body:has(#board:not([hidden])) .top h1{color:#fff1ea}}
+:root[data-theme="dark"][data-style="neon"] body:has(#board:not([hidden])){background:#07060f}
+:root[data-theme="light"][data-style="neon"] body:has(#board:not([hidden])) .top h1{color:#fff1ea}
 :root[data-style="neon"] .board{background:var(--n-card);color:var(--n-ink);border:1px solid var(--n-cyan);border-radius:16px;padding:0;
   box-shadow:0 0 calc(18px*var(--n-glow)) rgba(61,242,255,.35),inset 0 0 12px rgba(61,242,255,.12)}
 :root[data-style="neon"] .board::before,:root[data-style="neon"] .scene::after{display:none}

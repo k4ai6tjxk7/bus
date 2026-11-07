@@ -15,14 +15,14 @@
 :root[data-style="picture"]{--w-grain:${grain}}
 :root[data-style="picture"] #board{--w-paper:#f3ecdd;--w-card:#fbf6ec;--w-ink:#4a3b31;--w-muted:#8a7766;--w-line:#6b4f3f;--w-bus:#e9c46a;--w-hot:#e76f51;--w-mint:#7fb7a4;--sky1:#bcd9e4;--sky2:#f2ead8;
   --ink:var(--w-ink);--muted:var(--w-muted);--surface:var(--w-card);font-family:"LXGW WenKai TC",var(--f-body)}
-@media (prefers-color-scheme:dark){:root[data-style="picture"] #board{--w-paper:#1f2840;--w-card:#28324d;--w-ink:#efe6d4;--w-muted:#b1a993;--w-line:#d8c9a8;--sky1:#1c2742;--sky2:#4a5577}}
+:root[data-theme="dark"][data-style="picture"] #board{--w-paper:#1f2840;--w-card:#28324d;--w-ink:#efe6d4;--w-muted:#b1a993;--w-line:#d8c9a8;--sky1:#1c2742;--sky2:#4a5577}
 :root[data-style="picture"] body:has(#board:not([hidden])){background:#f3ecdd var(--w-grain);background-blend-mode:multiply}
-@media (prefers-color-scheme:dark){:root[data-style="picture"] body:has(#board:not([hidden])){background:#1f2840}}
+:root[data-theme="dark"][data-style="picture"] body:has(#board:not([hidden])){background:#1f2840}
 :root[data-style="picture"] .board{background:var(--w-card);color:var(--w-ink);border:1.5px solid var(--w-line);border-radius:22px 26px 20px 28px/26px 20px 28px 22px;padding:0}
 :root[data-style="picture"] .board::before{display:none}
 :root[data-style="picture"] .board-head{position:absolute;top:10px;left:14px;right:14px;z-index:2;letter-spacing:0;font-size:14px}
 :root[data-style="picture"] .board-head,:root[data-style="picture"] .live{color:#4a3b31}
-@media (prefers-color-scheme:dark){:root[data-style="picture"] .board-head,:root[data-style="picture"] .live{color:#efe6d4}}
+:root[data-theme="dark"][data-style="picture"] .board-head,:root[data-theme="dark"][data-style="picture"] .live{color:#efe6d4}
 :root[data-style="picture"] .scene{height:230px;margin:0;border-bottom:1.5px dashed var(--w-line);
   background:radial-gradient(60% 40% at 25% 30%,rgba(255,255,255,.55),transparent 70%),radial-gradient(40% 30% at 80% 20%,rgba(255,240,210,.5),transparent 70%),linear-gradient(var(--sky1),var(--sky2))}
 :root[data-style="picture"] .scene::after{inset:0;height:auto;background:var(--w-grain);mix-blend-mode:multiply;opacity:.5}

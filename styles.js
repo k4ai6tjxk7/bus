@@ -26,11 +26,11 @@
   const KIT='styles/kit.js?v=20261107a';
   const LIST=[
     {id:'classic',name:'原版',desc:'LED 看板與點陣道路'},
-    {id:'anime',name:'動漫',desc:'卡通描邊、藍天白雲、會揮手的 Q 版小人',files:[KIT,'styles/anime.js?v=20261107a'],font:'Zen+Maru+Gothic:wght@500;700;900'},
-    {id:'mini',name:'微縮',desc:'粉彩玩具小鎮、圓角公車，像桌上的模型',files:[KIT,'styles/mini.js?v=20261107a']},
-    {id:'pixel',name:'像素',desc:'16 位元電玩畫面、RPG 對話框',files:[KIT,'styles/pixel.js?v=20261107b']},
-    {id:'picture',name:'繪本',desc:'紙張質感、手寫字、柔和的顏色',files:[KIT,'styles/picture.js?v=20261107a'],font:'LXGW+WenKai+TC:wght@400;700'},
-    {id:'neon',name:'霓虹',desc:'城市夜景與發光招牌，淺色模式是黃昏',files:[KIT,'styles/neon.js?v=20261107b']},
+    {id:'anime',name:'動漫',desc:'卡通描邊、藍天白雲、會揮手的 Q 版小人',files:[KIT,'styles/anime.js?v=20261107c'],font:'Zen+Maru+Gothic:wght@500;700;900'},
+    {id:'mini',name:'微縮',desc:'粉彩玩具小鎮、圓角公車，像桌上的模型',files:[KIT,'styles/mini.js?v=20261107c']},
+    {id:'pixel',name:'像素',desc:'16 位元電玩畫面、RPG 對話框',files:[KIT,'styles/pixel.js?v=20261107c']},
+    {id:'picture',name:'繪本',desc:'紙張質感、手寫字、柔和的顏色',files:[KIT,'styles/picture.js?v=20261107c'],font:'LXGW+WenKai+TC:wght@400;700'},
+    {id:'neon',name:'霓虹',desc:'城市夜景與發光招牌，淺色模式是黃昏',files:[KIT,'styles/neon.js?v=20261107c']},
   ];
 
   function createStyleSetting({storage,list=LIST}){
