@@ -10,6 +10,7 @@
 @media (prefers-color-scheme:light){:root[data-style="neon"] #board{--n-card:#36255a;--n-ink:#fff1ea;--n-muted:#c9b3d9;--n-glow:.55;--sky1:#3b2a6e;--sky2:#ff9566}}
 :root[data-style="neon"] body:has(#board:not([hidden])){background:#2a1d45}
 @media (prefers-color-scheme:dark){:root[data-style="neon"] body:has(#board:not([hidden])){background:#07060f}}
+@media (prefers-color-scheme:light){:root[data-style="neon"] body:has(#board:not([hidden])) .top h1{color:#fff1ea}}
 :root[data-style="neon"] .board{background:var(--n-card);color:var(--n-ink);border:1px solid var(--n-cyan);border-radius:16px;padding:0;
   box-shadow:0 0 calc(18px*var(--n-glow)) rgba(61,242,255,.35),inset 0 0 12px rgba(61,242,255,.12)}
 :root[data-style="neon"] .board::before,:root[data-style="neon"] .scene::after{display:none}
