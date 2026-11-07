@@ -3,23 +3,36 @@
    看板上方的 3D 道路：每班車是一顆光點，依到站時間沿路駛向你的站牌。
    只負責畫，不知道到站更新、組合、TDX；app.js 把看板內容的 buses 交進來。
 
-   createScene({host, tagsEl, THREE, reduce}) 回傳 {setBuses(list)}
+   createScene({host, tagsEl, THREE, reduce, style}) 回傳 {setBuses(list), dispose()}
      host     放 canvas 的元素；沒有 WebGL 時會被隱藏，看板照常運作
      tagsEl   放路線標籤（HTML）的元素
      reduce   是否開啟「減少動態效果」：只在資料變動時畫一格，不跑動畫
+     style    畫面風格 id；沒有註冊過的風格一律畫原版
      list     [{name, sec, hot}]（Board.boardOf 的 buses）
+     dispose  換風格時收掉這個場景：停止動畫、移除 canvas 與標籤
 
+   register(id, factory)：其他畫面風格的檔案載入時用它登記自己的畫法，
+     factory 收到和 createScene 一樣的參數，回傳 {setBuses, dispose}。
    對外另有 tOf(秒數)：到站時間對應到路上的位置（0＝路的最遠端，1＝站牌）。 */
 (function(root){
   const T_MAX=1200; /* 20 分鐘以外的車都排在路的最遠端 */
   const tOf=sec=>1-Math.min(sec/T_MAX,1)*0.97;
-  const NONE={setBuses(){}};
+  const NONE={setBuses(){},dispose(){}};
+  const FACTORIES={};
+  const register=(id,factory)=>{FACTORIES[id]=factory};
 
-  function createScene({host,tagsEl,THREE,reduce}){
+  function createScene(opts){
+    const {host,THREE}=opts;
     if(!THREE){host.hidden=true;return NONE}
+    const f=FACTORIES[opts.style]||FACTORIES.classic;
+    try{return f(opts)}catch(e){host.hidden=true;return NONE}
+  }
+
+  /* 原版：點陣道路＋光點 */
+  register('classic',function({host,tagsEl,THREE,reduce}){
     const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
     let renderer;
-    try{renderer=new THREE.WebGLRenderer({antialias:true,alpha:true})}catch(e){host.hidden=true;return NONE}
+    renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
     renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
     host.prepend(renderer.domElement);
     const scene=new THREE.Scene();
@@ -82,7 +95,8 @@
     const v=new THREE.Vector3();
     const stopPos=new THREE.Vector3(0,2.4,0);
     function resize(){const w=host.clientWidth,h=host.clientHeight; if(!w||!h)return; renderer.setSize(w,h,false); cam.aspect=w/h; cam.updateProjectionMatrix(); if(reduce) frame(performance.now())}
-    if(window.ResizeObserver) new ResizeObserver(resize).observe(host); else window.addEventListener('resize',resize);
+    const ro=window.ResizeObserver?new ResizeObserver(resize):null;
+    if(ro) ro.observe(host); else window.addEventListener('resize',resize);
     resize();
 
     function place(el,pos,yOff){
@@ -112,13 +126,21 @@
       renderer.render(scene,cam);
     }
     colors();
-    try{matchMedia('(prefers-color-scheme: dark)').addEventListener('change',colors)}catch(e){}
+    const dark=window.matchMedia?matchMedia('(prefers-color-scheme: dark)'):null;
+    try{dark.addEventListener('change',colors)}catch(e){}
     if(reduce) frame(performance.now());
     else renderer.setAnimationLoop(()=>{if(document.visibilityState==='visible') frame(performance.now())});
-    return {setBuses};
-  }
+    function dispose(){
+      renderer.setAnimationLoop(null);
+      if(ro) ro.disconnect(); else window.removeEventListener('resize',resize);
+      try{dark.removeEventListener('change',colors)}catch(e){}
+      buses.forEach(b=>b.tag.remove()); stopTag.remove();
+      renderer.dispose(); renderer.domElement.remove();
+    }
+    return {setBuses,dispose};
+  });
 
-  const api={createScene,tOf,T_MAX};
+  const api={createScene,register,tOf,T_MAX};
   if(typeof module!=='undefined'&&module.exports) module.exports=api;
   else root.Scene=api;
 })(typeof window!=='undefined'?window:this);

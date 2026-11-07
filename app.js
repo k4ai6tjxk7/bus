@@ -1,13 +1,36 @@
 'use strict';
-/* 3D 場景只負責畫（scene.js）；看板內容的 buses 交給它。沒有 WebGL 時場景會隱藏，看板照常運作 */
-const scene3d=Scene.createScene({host:document.getElementById('scene'),tagsEl:document.getElementById('tags'),
-  THREE:window.THREE,reduce:matchMedia('(prefers-reduced-motion: reduce)').matches});
-
 const $=id=>document.getElementById(id);
 const LS={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},
           set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 
 const LS_ADAPTER={get:k=>LS.get(k),set:(k,v)=>LS.set(k,v)};
+
+/* ---------- 3D 場景與畫面風格 ----------
+   3D 場景只負責畫（scene.js）；看板內容的 buses 交給它。沒有 WebGL 時場景會隱藏，看板照常運作。
+   畫面風格整支手機共用（styles.js）；原版以外的風格只在選到時才載入，載入失敗就維持原版。 */
+const styleSetting=Styles.createStyleSetting({storage:LS_ADAPTER});
+const loadStyle=Styles.createLoader({doc:document});
+const SCENE_OPTS={host:$('scene'),tagsEl:$('tags'),THREE:window.THREE,reduce:matchMedia('(prefers-reduced-motion: reduce)').matches};
+let scene3d=Scene.createScene(Object.assign({style:Styles.DEFAULT},SCENE_OPTS));
+let shownBuses=null;              /* 最後交給場景的班次與時間，換風格時交給新場景 */
+let styleShown=Styles.DEFAULT, styleWant=Styles.DEFAULT;
+function showStyle(id){
+  styleWant=id;
+  loadStyle(id).then(ok=>{
+    if(styleWant!==id) return;    /* 載入時又換了別款 */
+    const use=ok?id:Styles.DEFAULT;
+    if(use===styleShown) return;
+    styleShown=use;
+    if(use===Styles.DEFAULT) delete document.documentElement.dataset.style; else document.documentElement.dataset.style=use;
+    scene3d.dispose();
+    scene3d=Scene.createScene(Object.assign({style:use},SCENE_OPTS));
+    if(shownBuses){
+      const gone=(Date.now()-shownBuses.at)/1000;
+      scene3d.setBuses(shownBuses.list.map(b=>b.sec==null?b:Object.assign({},b,{sec:Math.max(0,b.sec-gone)})));
+    }
+  });
+}
+showStyle(styleSetting.current());
 /* 組合的讀寫、驗證全部交給組合儲存（pairs.js） */
 const store=PairStore.createPairStore(LS_ADAPTER);
 /* 和 TDX 打交道（金鑰、token、查詢額度、錯誤訊息）全部交給 TDX 查詢（tdx.js） */
@@ -106,7 +129,7 @@ function etaHtml(e,cls,hero){
 }
 function renderBoard(b,scene){
   renderHidden();
-  if(scene) scene3d.setBuses(b.buses);
+  if(scene){shownBuses={list:b.buses,at:Date.now()}; scene3d.setBuses(b.buses)}
   if(b.state!=='ok'){
     $('hero').innerHTML=`<div class="board-empty">${esc(EMPTY_TEXT[b.state])}</div>`;$('list').hidden=true;$('otherTitle').hidden=true;return;
   }
@@ -137,7 +160,7 @@ function openSettings(on,focusId){
   $('board').hidden=on; $('settings').hidden=!on; closeMenu();
   if(on) updater.setActive(false);
   if(on){
-    const k=tdx.key(); $('cid').value=k.id; $('csec').value=k.secret; renderPairs(); renderUsage(); renderRegions(); $('viaPick').innerHTML='';
+    const k=tdx.key(); $('cid').value=k.id; $('csec').value=k.secret; renderPairs(); renderUsage(); renderStyles(); renderRegions(); $('viaPick').innerHTML='';
     const f=focusId&&$(focusId);
     if(f){f.scrollIntoView({block:'center'}); f.focus({preventScroll:true})} else window.scrollTo(0,0);
   } else {renderChips(); updater.setActive(true); viewStart()}
@@ -290,6 +313,15 @@ $('btnClearUsage').onclick=()=>{
   if(b.dataset.confirm!=='1'){b.dataset.confirm='1'; b.textContent='確定清除'; return}
   usage.clear(); renderUsage();
 };
+
+/* 畫面風格：只有一款時不顯示這一區；選了馬上換，不必重新整理 */
+function renderStyles(){
+  const list=styleSetting.list(), cur=styleSetting.current();
+  $('stylePanel').hidden=list.length<2;
+  $('styleList').innerHTML=list.map(s=>`<label class="cand"><input type="radio" name="style" value="${esc(s.id)}"${s.id===cur?' checked':''}>
+    <span><b>${esc(s.name)}</b><small>${esc(s.desc)}</small></span></label>`).join('');
+}
+$('styleList').onchange=e=>{const id=e.target.value; if(styleSetting.set(id)) showStyle(id)};
 
 /* 生活圈：預設用最後新增那組的生活圈；換生活圈時站名要重新搜尋 */
 function renderRegions(){

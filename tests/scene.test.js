@@ -20,3 +20,18 @@ test('沒有 three.js 時隱藏場景，setBuses 不做事也不出錯', ()=>{
   assert.equal(host.hidden,true);
   assert.doesNotThrow(()=>s.setBuses([{name:'D1',sec:60,hot:true}]));
 });
+
+test('畫面風格：用登記過的畫法；沒登記過的風格畫原版；畫法出錯時隱藏場景', ()=>{
+  const {register}=require('../scene.js');
+  const calls=[];
+  register('classic',o=>{calls.push('classic:'+o.style); return {setBuses(){},dispose(){}}});
+  register('x',o=>{calls.push('x'); return {setBuses(){},dispose(){}}});
+  register('broken',()=>{throw new Error('壞了')});
+  const host={hidden:false}, base={host,tagsEl:{},THREE:{},reduce:false};
+  createScene(Object.assign({style:'x'},base));
+  createScene(Object.assign({style:'沒有這款'},base));
+  assert.deepEqual(calls,['x','classic:沒有這款']);
+  const s=createScene(Object.assign({style:'broken'},base));
+  assert.equal(host.hidden,true);
+  assert.doesNotThrow(()=>{s.setBuses([]); s.dispose()});
+});
