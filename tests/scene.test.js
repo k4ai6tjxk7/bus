@@ -35,3 +35,16 @@ test('畫面風格：用登記過的畫法；沒登記過的風格畫原版；�
   assert.equal(host.hidden,true);
   assert.doesNotThrow(()=>{s.setBuses([]); s.dispose()});
 });
+
+test('小人的動作：將到站一直揮手；有車每 5 秒揮 1.5 秒；沒車不揮手、偶爾望向路', ()=>{
+  const {wave}=require('../scene.js');
+  const up=a=>a>2;
+  for(let t=0;t<20;t+=.25){
+    assert.ok(up(wave(t,'arrive').arm),'將到站 '+t);
+    assert.equal(up(wave(t,'normal').arm),(t%5)<1.5,'有車 '+t);
+    assert.ok(!up(wave(t,'none').arm),'沒車 '+t);
+  }
+  assert.equal(wave(1,'none').look<0,true);
+  assert.equal(wave(4,'none').look,0);
+  assert.equal(wave(1,'normal').look,0);
+});

@@ -13,10 +13,19 @@
 
    register(id, factory)：其他畫面風格的檔案載入時用它登記自己的畫法，
      factory 收到和 createScene 一樣的參數，回傳 {setBuses, dispose}。
-   對外另有 tOf(秒數)：到站時間對應到路上的位置（0＝路的最遠端，1＝站牌）。 */
+   對外另有 tOf(秒數)：到站時間對應到路上的位置（0＝路的最遠端，1＝站牌）。
+   wave(秒, 狀態)：其他風格裡小人的動作，狀態是 'arrive' 將到站、'normal' 有車、'none' 沒車；
+     回傳 {arm: 右手舉多高（弧度，0.12 是放下）, look: 頭轉向路的那頭多少}。 */
 (function(root){
   const T_MAX=1200; /* 20 分鐘以外的車都排在路的最遠端 */
   const tOf=sec=>1-Math.min(sec/T_MAX,1)*0.97;
+  /* 小人的動作：將到站一直揮手；有車時每 5 秒揮一次（揮 1.5 秒）；沒車時不揮手、每 7 秒望向路的那頭一次 */
+  const ARM_DOWN=.12;
+  function wave(t,state){
+    if(state==='arrive') return {arm:2.6+Math.sin(t*12)*.38,look:0};
+    if(state==='none') return {arm:ARM_DOWN,look:(t%7<2.4)?-0.9:0};
+    return {arm:(t%5)<1.5?2.6+Math.sin(t*11)*.38:ARM_DOWN,look:0};
+  }
   const NONE={setBuses(){},dispose(){}};
   const FACTORIES={};
   const register=(id,factory)=>{FACTORIES[id]=factory};
@@ -140,7 +149,7 @@
     return {setBuses,dispose};
   });
 
-  const api={createScene,register,tOf,T_MAX};
+  const api={createScene,register,tOf,T_MAX,wave};
   if(typeof module!=='undefined'&&module.exports) module.exports=api;
   else root.Scene=api;
 })(typeof window!=='undefined'?window:this);

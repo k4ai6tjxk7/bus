@@ -2,7 +2,7 @@
 /* 發佈內容的守門測試：node --test tests/*.test.js
    原則：GitHub Pages 只發佈 App 執行需要的檔案（index.html 和它載入的本機 js）；
    測試、工具、文件留在 repo、不發佈。
-   App 需要哪些檔案由 index.html 決定，不另外維護清單；
+   App 需要哪些檔案由 index.html（以及 styles.js 的畫面風格清單）決定，不另外維護清單；
    根目錄其他的檔案或資料夾都必須列在 _config.yml 的 exclude 裡。
    Jekyll 本來就不發佈 . 或 _ 開頭的檔案，不用列。 */
 const test=require('node:test');
@@ -21,6 +21,8 @@ function appFiles(){
     if(/^[a-z][a-z0-9+.-]*:|^\/\//i.test(u)) continue; /* https:、data: 等外部或內嵌資源 */
     out.add(u.split('?')[0].replace(/^\.\//,''));
   }
+  /* 畫面風格的檔案由 styles.js 在選到時載入，也是 App 需要的 */
+  for(const f of require(path.join(ROOT,'styles.js')).files()){const u=f.split('?')[0]; out.add(u); out.add(u.split('/')[0])}
   return out;
 }
 /* _config.yml 的 exclude 清單（只認這個檔案用的簡單寫法：exclude: 底下一行一項「- 名稱」） */
