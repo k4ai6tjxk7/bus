@@ -203,6 +203,46 @@ test('還沒有班次就換風格：新場景不收到班次', async ()=>{
     }
   });
 
+  /* 拆成規則 [{media, sels, body}]；只認一層 @media（風格檔沒有更深的巢狀） */
+  const rulesOf=css=>{
+    const out=[];
+    const walk=(text,media)=>{
+      let i=0;
+      while(i<text.length){
+        const open=text.indexOf('{',i); if(open<0) break;
+        const head=text.slice(i,open).trim();
+        let d=1,j=open+1;
+        for(;j<text.length&&d;j++){if(text[j]==='{')d++; else if(text[j]==='}')d--}
+        const body=text.slice(open+1,j-1);
+        if(head.startsWith('@media')) walk(body,head.replace(/\s+/g,''));
+        else if(!head.startsWith('@')) out.push({media,sels:head.split(',').map(x=>x.trim().replace(/\s+/g,' ')),body});
+        i=j;
+      }
+    };
+    walk(css,'');
+    return out;
+  };
+  /* 會動的規則：animation 不是 none。允許兩種寫法：放在 no-preference 區塊裡，或在 reduce 區塊裡對同一個選擇器設 animation:none */
+  const moving=css=>{
+    const rules=rulesOf(css), runs=r=>/(^|;)\s*animation(-name)?\s*:\s*(?!none\s*(;|!|$))/.test(r.body);
+    const off=new Set(rules.filter(r=>r.media.includes('prefers-reduced-motion:reduce')&&/(^|;)\s*animation\s*:\s*none/.test(r.body)).flatMap(r=>r.sels));
+    return rules.filter(r=>runs(r)&&!r.media.includes('prefers-reduced-motion:no-preference')).flatMap(r=>r.sels.filter(x=>!off.has(x)));
+  };
+
+  test('風格檔的動畫在「減少動態效果」時都會停', ()=>{
+    for(const f of [...new Set(files)]) assert.deepEqual(moving(cssOf(read(f))),[],f+' 有開了減少動態效果仍會動的動畫');
+  });
+
+  test('動畫檢查本身：抓得到沒處理的動畫，兩種寫法都接受', ()=>{
+    assert.deepEqual(moving('.a{color:red;animation:blink 1s infinite}.b{animation:none}'),['.a']);
+    assert.deepEqual(moving('.a, .b{animation-name:x}'),['.a','.b']);
+    assert.deepEqual(moving('@media (prefers-reduced-motion: no-preference){.a{animation:blink 1s}}'),[]);
+    assert.deepEqual(moving('.a{animation:x 1s}@media (prefers-reduced-motion:reduce){.a{animation:none}}'),[]);
+    assert.deepEqual(moving('.a,.b{animation:x 1s}@media (prefers-reduced-motion:reduce){.a{animation:none}}'),['.b'],'只關掉一部分不算');
+    assert.deepEqual(moving('@media (prefers-color-scheme:dark){.a{animation:x 1s}}'),['.a'],'別的 @media 不算');
+    assert.deepEqual(moving('.a{animation:none!important}'),[]);
+  });
+
   test('選擇器檢查本身：抓得到不存在的 class，也不會把顏色碼、屬性選擇器當成 class', ()=>{
     const sels=selectorsOf(':root[data-style="x"] .board:has(.hero-eta.hot),#hero{color:#ffc83a;background:url(a.b)}\n@media (x){.row{x:1}}');
     assert.deepEqual([...sels].sort(),['#hero','.board','.hero-eta','.hot','.row']);

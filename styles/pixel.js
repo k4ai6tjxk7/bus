@@ -15,7 +15,7 @@
 :root[data-style="pixel"] .board::before,:root[data-style="pixel"] .scene::after{display:none}
 :root[data-style="pixel"] .board-head{position:absolute;top:8px;left:10px;right:10px;z-index:2;color:#f4f4f4;text-shadow:2px 2px 0 #1a1c2c;letter-spacing:.06em}
 :root[data-style="pixel"] .live{color:#f4f4f4}
-:root[data-style="pixel"] .live i{border-radius:0;box-shadow:none;animation:blink 1s steps(1) infinite}
+:root[data-style="pixel"] .live i{border-radius:0;box-shadow:none}
 :root[data-style="pixel"] .scene{height:220px;margin:0;border-bottom:3px solid var(--p-edge);
   background:linear-gradient(var(--sky1) 0 25%,color-mix(in srgb,var(--sky1),var(--sky2)) 25% 50%,var(--sky2) 50%)}
 :root[data-style="pixel"] #hero{padding:12px 14px 14px}
@@ -29,7 +29,11 @@
 :root[data-style="pixel"] .hero-eta .u{font-size:18px}
 :root[data-style="pixel"] .hero-eta.word{font-size:30px}
 :root[data-style="pixel"] .hero-eta.hot{color:var(--p-hot)!important;text-shadow:3px 3px 0 var(--p-bgc)!important;animation:none}
-:root[data-style="pixel"] .hero-eta.hot::after{content:"▼";display:block;font-size:14px;text-align:center;animation:blink 1s steps(1) infinite}
+:root[data-style="pixel"] .hero-eta.hot::after{content:"▼";display:block;font-size:14px;text-align:center}
+/* 閃爍只在沒開「減少動態效果」時；資料太舊時狀態燈不閃（和原版一樣） */
+@media (prefers-reduced-motion:no-preference){
+  :root[data-style="pixel"] .live:not(.stale) i,:root[data-style="pixel"] .hero-eta.hot::after{animation:blink 1s steps(1) infinite}
+}
 :root[data-style="pixel"] .hero-eta.dim{color:var(--p-muted)!important;text-shadow:none!important;font-size:18px}
 :root[data-style="pixel"] .board-empty{color:var(--p-muted);padding:16px 14px}
 :root[data-style="pixel"] .tag{background:#1a1c2c;color:#f4f4f4;border:2px solid #f4f4f4;border-radius:0;font-family:var(--f-led);font-weight:400;padding:0 5px}
