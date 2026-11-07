@@ -39,6 +39,8 @@ html,body{margin:0}
 body{background:var(--bg);color:var(--ink);font:15px/1.55 var(--f-body);-webkit-font-smoothing:antialiased;
   padding:calc(env(safe-area-inset-top,0px) + 8px) max(16px,env(safe-area-inset-right,0px)) calc(28px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
 .wrap{max-width:520px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+/* 看板與設定頁是外層 .wrap 裡的 .wrap：不能用 auto 邊距置中，否則寬度會縮成內容的寬度 */
+.wrap>.wrap{margin:0}
 button{font:inherit;cursor:pointer;color:inherit;background:none;border:0;padding:0}
 button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--route);outline-offset:2px;border-radius:8px}
 
