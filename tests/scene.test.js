@@ -49,6 +49,24 @@ test('畫法出錯隱藏場景後，換成正常的風格，場景要再出現',
   assert.equal(host.hidden,true);
 });
 
+test('深淺色換了：叫目前畫法的 recolor；收掉後不再叫；沒給 theme 就是淺色', ()=>{
+  const {register}=require('../scene.js');
+  const fns=[], theme={isDark:()=>dark,onChange(f){fns.push(f); return ()=>fns.splice(fns.indexOf(f),1)}};
+  let dark=false;
+  const calls=[], seen=[];
+  register('tt',o=>{seen.push(o.theme.isDark()); return {setBuses(){},dispose(){calls.push('dispose')},recolor(){calls.push('recolor')}}});
+  register('plain',()=>({setBuses(){},dispose(){}}));
+  const base={host:{hidden:false},tagsEl:{},THREE:{},reduce:false};
+  const s=createScene(Object.assign({style:'tt',theme},base));
+  dark=true; fns.forEach(f=>f(true));
+  assert.deepEqual(calls,['recolor']);
+  s.dispose(); assert.equal(fns.length,0,'收掉場景要取消監聽');
+  fns.forEach(f=>f(false)); assert.deepEqual(calls,['recolor','dispose']);
+  createScene(Object.assign({style:'tt'},base)); assert.deepEqual(seen,[false,false],'沒給 theme 時畫法看到淺色');
+  const p=createScene(Object.assign({style:'plain',theme},base));
+  assert.doesNotThrow(()=>fns.forEach(f=>f(true)),'沒有 recolor 的畫法也不出錯'); p.dispose();
+});
+
 test('小人的動作：將到站一直揮手；有車每 5 秒揮 1.5 秒；沒車不揮手、偶爾望向路', ()=>{
   const {wave}=require('../scene.js');
   const up=a=>a>2;

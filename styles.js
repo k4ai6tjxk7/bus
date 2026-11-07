@@ -23,7 +23,7 @@
 (function(root){
   const KEY='bus.style', DEFAULT='classic';
   /* files：依序載入的檔案（相對網址，帶版本號）；font：Google Fonts 的 family 參數。原版兩者都沒有 */
-  const KIT='styles/kit.js?v=20261107a';
+  const KIT='styles/kit.js?v=20261107b';
   const LIST=[
     {id:'classic',name:'原版',desc:'LED 看板與點陣道路'},
     {id:'anime',name:'動漫',desc:'卡通描邊、藍天白雲、會揮手的 Q 版小人',files:[KIT,'styles/anime.js?v=20261107c'],font:'Zen+Maru+Gothic:wght@500;700;900'},

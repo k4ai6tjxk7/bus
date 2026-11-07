@@ -119,20 +119,18 @@
   const wave=Scene.wave;
 
   function styled(look){
-    return function({host,tagsEl,reduce}){
-      const darkMQ=window.matchMedia?matchMedia('(prefers-color-scheme: dark)'):null;
+    return function({host,tagsEl,reduce,theme}){
       const stopTag=document.createElement('div'); stopTag.className='tag stop'; stopTag.textContent='你在這'; tagsEl.appendChild(stopTag);
       let W=null, given=[], givenAt=0;
       const start=()=>{W=world(); W.setBuses(given,givenAt)};
       const restyle=()=>{if(W) W.stop(); start()};
-      try{darkMQ.addEventListener('change',restyle)}catch(e){}
       const ro=window.ResizeObserver?new ResizeObserver(()=>W&&W.resize()):null;
       if(ro) ro.observe(host);
 
       function world(){
         const scene=new THREE.Scene(), cam=new THREE.PerspectiveCamera(40,1,.1,250);
         const color=(n,f)=>new THREE.Color(getComputedStyle(host).getPropertyValue(n).trim()||f);
-        const sty=look({scene,mode:darkMQ&&darkMQ.matches?'dark':'light',color});
+        const sty=look({scene,mode:theme.isDark()?'dark':'light',color});
         const renderer=new THREE.WebGLRenderer({antialias:!sty.pixel,alpha:true});
         renderer.shadowMap.enabled=!!sty.shadows; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
         host.prepend(renderer.domElement);
@@ -214,8 +212,8 @@
       start();
       return {
         setBuses(list){given=list; givenAt=Date.now(); W.setBuses(list,givenAt)},
+        recolor:restyle,  /* 深淺色換了：整個場景用新的顏色重建，班次沿用 */
         dispose(){
-          try{darkMQ.removeEventListener('change',restyle)}catch(e){}
           if(ro) ro.disconnect();
           W.stop(); stopTag.remove();
         }

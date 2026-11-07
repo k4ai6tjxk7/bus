@@ -3,16 +3,17 @@
    看板上方的 3D 道路：每班車是一顆光點，依到站時間沿路駛向你的站牌。
    只負責畫，不知道到站更新、組合、TDX；app.js 把看板內容的 buses 交進來。
 
-   createScene({host, tagsEl, THREE, reduce, style}) 回傳 {setBuses(list), dispose()}
+   createScene({host, tagsEl, THREE, reduce, style, theme}) 回傳 {setBuses(list), dispose()}
      host     放 canvas 的元素；沒有 WebGL、或這款畫法出錯時會被隱藏，看板照常運作（換風格時再顯示）
      tagsEl   放路線標籤（HTML）的元素
      reduce   是否開啟「減少動態效果」：只在資料變動時畫一格，不跑動畫
      style    畫面風格 id；沒有註冊過的風格一律畫原版
+     theme    深淺色（theme.js 的 Theme.page）：isDark() 給畫法看，onChange 時叫畫法的 recolor；沒給就是淺色、不會切換
      list     [{name, sec, hot}]（Board.boardOf 的 buses）
      dispose  換風格時收掉這個場景：停止動畫、移除 canvas 與標籤
 
    register(id, factory)：其他畫面風格的檔案載入時用它登記自己的畫法，
-     factory 收到和 createScene 一樣的參數，回傳 {setBuses, dispose}。
+     factory 收到和 createScene 一樣的參數（theme 一定有），回傳 {setBuses, dispose}，可另加 recolor()：深淺色換了時重新上色。
    對外另有 tOf(秒數)：到站時間對應到路上的位置（0＝路的最遠端，1＝站牌）。
    wave(秒, 狀態)：其他風格裡小人的動作，狀態是 'arrive' 將到站、'normal' 有車、'none' 沒車；
      回傳 {arm: 右手舉多高（弧度，0.12 是放下）, look: 頭轉向路的那頭多少}。 */
@@ -27,6 +28,7 @@
     return {arm:(t%5)<1.5?2.6+Math.sin(t*11)*.38:ARM_DOWN,look:0};
   }
   const NONE={setBuses(){},dispose(){}};
+  const LIGHT={isDark:()=>false,onChange:()=>()=>{}};
   const FACTORIES={};
   const register=(id,factory)=>{FACTORIES[id]=factory};
 
@@ -35,7 +37,12 @@
     if(!THREE){host.hidden=true;return NONE}
     const f=FACTORIES[opts.style]||FACTORIES.classic;
     host.hidden=false;  /* 上一款畫法出錯時隱藏過，換風格要再顯示 */
-    try{return f(opts)}catch(e){host.hidden=true;return NONE}
+    const theme=opts.theme||LIGHT;
+    let s;
+    try{s=f(Object.assign({},opts,{theme}))}catch(e){host.hidden=true;return NONE}
+    /* 深淺色換了：交給畫法重新上色。場景只聽 theme，不直接看系統 */
+    const off=theme.onChange(()=>{if(s.recolor) try{s.recolor()}catch(e){}});
+    return {setBuses:l=>s.setBuses(l),dispose(){off(); s.dispose()}};
   }
 
   /* 原版：點陣道路＋光點 */
@@ -136,18 +143,15 @@
       renderer.render(scene,cam);
     }
     colors();
-    const dark=window.matchMedia?matchMedia('(prefers-color-scheme: dark)'):null;
-    try{dark.addEventListener('change',colors)}catch(e){}
     if(reduce) frame(performance.now());
     else renderer.setAnimationLoop(()=>{if(document.visibilityState==='visible') frame(performance.now())});
     function dispose(){
       renderer.setAnimationLoop(null);
       if(ro) ro.disconnect(); else window.removeEventListener('resize',resize);
-      try{dark.removeEventListener('change',colors)}catch(e){}
       buses.forEach(b=>b.tag.remove()); stopTag.remove();
       renderer.dispose(); renderer.domElement.remove();
     }
-    return {setBuses,dispose};
+    return {setBuses,dispose,recolor:colors};
   });
 
   const api={createScene,register,tOf,T_MAX,wave};

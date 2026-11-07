@@ -251,4 +251,11 @@ test('還沒有班次就換風格：新場景不收到班次', async ()=>{
     assert.equal(used('hero-et',app),false,'只對到一部分的名稱不算');
     assert.equal(used('沒有這個',app),false);
   });
+
+  test('深淺色只由 theme.js 判斷：其他檔案不直接看系統的 prefers-color-scheme', ()=>{
+    const others=[...appFiles,...new Set(files)].filter(f=>f!=='theme.js');
+    assert.ok(others.includes('index.html')&&others.includes('scene.js')&&others.includes('styles/kit.js')&&others.includes('styles/neon.js'));
+    const hits=others.filter(f=>/prefers-color-scheme/.test(read(f)));
+    assert.deepEqual(hits,[],'這些檔案請改用 :root[data-theme="dark"]／[data-theme="light"]，3D 場景用 theme');
+  });
 }

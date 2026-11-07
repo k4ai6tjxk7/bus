@@ -10,7 +10,7 @@ const LS_ADAPTER={get:k=>LS.get(k),set:(k,v)=>LS.set(k,v)};
    畫面風格整支手機共用；換風格（載入、換場景、班次轉交）全部交給 styles.js 的 createSwitcher。 */
 const styleSetting=Styles.createStyleSetting({storage:LS_ADAPTER});
 const styleSwitcher=Styles.createSwitcher({load:Styles.createLoader({doc:document}),createScene:Scene.createScene,
-  sceneOpts:{host:$('scene'),tagsEl:$('tags'),THREE:window.THREE,reduce:matchMedia('(prefers-reduced-motion: reduce)').matches},
+  sceneOpts:{host:$('scene'),tagsEl:$('tags'),THREE:window.THREE,theme:Theme.page,reduce:matchMedia('(prefers-reduced-motion: reduce)').matches},
   root:document.documentElement,now:()=>Date.now()});
 styleSwitcher.show(styleSetting.current());
 /* 組合的讀寫、驗證全部交給組合儲存（pairs.js） */
