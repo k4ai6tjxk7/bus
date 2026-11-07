@@ -140,6 +140,10 @@ def run(browser, port, pairs, cur, steps, fail_eta=False, extra=None):
     block = extra.pop('_block', None)  # 模擬某個風格檔載入失敗
     if block:
         ctx.route(f'**/{block}*', lambda r: r.fulfill(status=404, body='no'))
+    broken = extra.pop('_broken', None)  # 模擬某款風格的畫法出錯：風格檔載得到，但建立場景時丟錯誤
+    if broken:
+        ctx.route(f'**/styles/{broken}.js*', lambda r: r.fulfill(status=200, content_type='application/javascript',
+                  body=f"Scene.register('{broken}',function(){{throw new Error('畫法出錯')}});"))
     ctx.add_init_script(SCENE_SPY)
     init = {'bus.cfg': {'id': 'id', 'secret': 'sec'}, 'bus.tok': {'v': 'T', 'exp': 4102444800000},
             'bus.pairs': pairs, 'bus.cur': cur, 'bus.tip': True, **extra}
@@ -394,6 +398,9 @@ FLOWS = {
         'S3 風格檔載入失敗：維持原版，換別款照常': ([PA], 'pa', [wait(1500), freeze, style_snap('open'), settings, grab('checked', '#styleList'),
                         lambda p, s: s.__setitem__('checkedId', p.evaluate("() => document.querySelector('#styleList input:checked').value")),
                         mark('mini'), pick_style('mini'), back, style_snap('mini')], False, {'bus.style': 'pixel', '_block': 'styles/pixel.js'}),
+        'S4 某款畫法出錯：只隱藏 3D 場景，換回原版或別款要再出現': ([PA], 'pa', [wait(1500), freeze, style_snap('open'), settings,
+                        mark('classic'), pick_style('classic'), back, style_snap('classic'), settings,
+                        mark('anime'), pick_style('anime'), back, style_snap('anime')], False, {'bus.style': 'mini', '_broken': 'mini'}),
     },
 }
 
