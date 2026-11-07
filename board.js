@@ -114,7 +114,11 @@
       row('D4',{StopStatus:1,NextBusTime:new Date(now+40*60000).toISOString()})],now,now);
   }
 
-  const api={boardOf,demoBoard,legOf,secondLegNote};
+  /* 畫 HTML 前跳脫：& < > " ' 五個字元；單引號也轉，讓單引號屬性一樣安全 */
+  const ESC={'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'};
+  function esc(s){return String(s).replace(/[&<>"']/g,c=>ESC[c])}
+
+  const api={boardOf,demoBoard,legOf,secondLegNote,esc};
   if(typeof module!=='undefined'&&module.exports) module.exports=api;
   else root.Board=api;
 })(typeof window!=='undefined'?window:this);

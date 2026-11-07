@@ -22,7 +22,7 @@ const finder=Routes.createFinder({routesThrough:(k,o)=>tdx.routesThrough(k,o)});
 /* 何時查到站、查完存什麼、看第幾段全部交給到站更新（updater.js）；這裡只負責把畫面資料畫出來 */
 const updater=Updater.createUpdater({store,finder,tdx,onChange:v=>render(v)});
 
-const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const esc=Board.esc;
 const waitText=Updater.waitText;
 
 function curPair(){return store.current()}
