@@ -159,3 +159,56 @@ test('還沒有班次就換風格：新場景不收到班次', async ()=>{
   const p=r.look.show('toy'); r.loads[0].res(true); await p;
   assert.deepEqual(r.scenes[1].buses,[]);
 });
+
+/* ---------- 風格檔的看板樣式對得上 App ----------
+   風格檔直接寫 App 的 class／id（.hero-eta、#board…）。App 改名或刪掉時，這裡馬上抓到，不必等截圖才發現。
+   App 檔案＝index.html、它載入的 js（three.min.js 除外）、共用零件 kit.js；不含風格檔自己，避免自己證明自己。 */
+{
+  const fs=require('node:fs'), path=require('node:path');
+  const ROOT=path.join(__dirname,'..'), read=f=>fs.readFileSync(path.join(ROOT,f),'utf8');
+  const html=read('index.html');
+  const appFiles=['index.html',...[...html.matchAll(/<script src="([^"?]+)/g)].map(m=>m[1]).filter(f=>f!=='three.min.js'),'styles/kit.js'];
+  const app=appFiles.map(read).join('\n');
+  const used=(name,src)=>new RegExp('(^|[^\\w-])'+name.replace(/[-]/g,'\\-')+'(?![\\w-])').test(src);
+  /* 風格檔交給 K.css 的樣式字串 */
+  const cssOf=src=>[...src.matchAll(/\.css\(\s*'[\w-]+'\s*,\s*`([\s\S]*?)`\s*\)/g)].map(m=>m[1]).join('\n').replace(/\/\*[\s\S]*?\*\//g,'');
+  /* 每條規則 { 前面的選擇器（@media 這類不算），去掉屬性選擇器後取出 .class 與 #id */
+  const selectorsOf=css=>{
+    const out=new Set();
+    for(const m of css.matchAll(/([^{}]+)\{/g)){
+      const sel=m[1].trim(); if(sel.startsWith('@')) continue;
+      for(const x of sel.replace(/\[[^\]]*\]/g,'').matchAll(/[.#]([a-zA-Z_][\w-]*)/g)) out.add(x[0]);
+    }
+    return out;
+  };
+  const files=LIST.flatMap(s=>s.files||[]).map(f=>f.split('?')[0]).filter(f=>f!=='styles/kit.js');
+  const defined=src=>new Set([...src.matchAll(/(--[\w-]+)\s*:/g)].map(m=>m[1]));
+  const appVars=defined(html+'\n'+read('styles/kit.js'));
+
+  test('風格檔的看板樣式只用 App 裡存在的 class 和 id', ()=>{
+    assert.ok(files.length>=5);
+    for(const f of [...new Set(files)]){
+      const sels=selectorsOf(cssOf(read(f)));
+      assert.ok(sels.size>10,f+' 應該讀得到樣式');
+      const missing=[...sels].filter(s=>!used(s.slice(1),app));
+      assert.deepEqual(missing,[],f+' 用到 App 裡沒有的選擇器');
+    }
+  });
+
+  test('風格檔用到的 CSS 變數都有定義（index.html、kit.js 或風格檔自己）', ()=>{
+    for(const f of [...new Set(files)]){
+      const css=cssOf(read(f)), have=new Set([...appVars,...defined(css)]);
+      const missing=[...new Set([...css.matchAll(/var\((--[\w-]+)/g)].map(m=>m[1]))].filter(v=>!have.has(v));
+      assert.deepEqual(missing,[],f+' 用到沒定義的變數');
+    }
+  });
+
+  test('選擇器檢查本身：抓得到不存在的 class，也不會把顏色碼、屬性選擇器當成 class', ()=>{
+    const sels=selectorsOf(':root[data-style="x"] .board:has(.hero-eta.hot),#hero{color:#ffc83a;background:url(a.b)}\n@media (x){.row{x:1}}');
+    assert.deepEqual([...sels].sort(),['#hero','.board','.hero-eta','.hot','.row']);
+    assert.equal(used('hero-eta',app),true);
+    assert.equal(used('hero',app),true);
+    assert.equal(used('hero-et',app),false,'只對到一部分的名稱不算');
+    assert.equal(used('沒有這個',app),false);
+  });
+}
