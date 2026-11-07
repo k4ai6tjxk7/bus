@@ -11,9 +11,10 @@
      start()          開啟 App、已決定看哪一組之後，送第一次查詢
      tick()           每 5 秒：扣倒數、閒置暫停、時間到才自動更新
      refresh()        使用者按更新
-     select(id)       切換組合：回到第一段、顯示「載入中…」、查詢；id 不存在回傳 false
+     select(id)       切換組合：回到第一段；這組手上有 3 分鐘內的到站資料就先顯示，
+                      到了更新時間才在背景查；沒有才顯示「載入中…」並查詢。id 不存在回傳 false
      switchLeg()      轉乘組合看下一段／回第一段（兩段到站一起查過，不另外查）
-     setActive(on)    是否在看板上（進出設定頁）；回到看板時重查
+     setActive(on)    是否在看板上（進出設定頁）；回到看板時和切換組合一樣：有資料先顯示，到時間才查
      leave()          App 切到背景
      back(pick)       App 回到前景；離開 30 分鐘以上算重新打開：回到第一段，
                       並呼叫 pick()，pick 回傳 true 表示它換了目前組合
@@ -33,11 +34,14 @@
    所有文字都是純文字，畫 HTML 時再跳脫。
 
    到站資料記住「是查哪些站牌」：路線改了（重找、換轉乘站、改直達）就自動失效，不用呼叫端清除；
-   只排除路線不會讓它失效。 */
+   只排除路線不會讓它失效。
+   每個組合各自保留最後一次的到站資料（只在記憶體，不寫 localStorage），切回來不用重查；
+   超過 3 分鐘（看板「資料太舊」的標準）就不再拿來用。
+   查詢途中切換組合：舊組合排隊中的查詢直接取消；已送出的照樣收下存起來，查完馬上接著查新組合。 */
 (function(root){
   const node=typeof module!=='undefined'&&module.exports;
   const Board=node?require('./board.js'):root.Board;
-  const IDLE_MS=10*60000, REOPEN_MS=30*60000, BACK_STALE_MS=20000;
+  const IDLE_MS=10*60000, REOPEN_MS=30*60000, BACK_STALE_MS=20000, KEEP_MS=3*60000;
   const TEXT={
     loading:'載入中…',
     finding:'正在找可搭的路線…',
@@ -59,8 +63,9 @@
     const store=deps.store, finder=deps.finder, tdx=deps.tdx, onChange=deps.onChange||(()=>{});
     const now=deps.now||(()=>Date.now());
 
-    let leg=1, last=null; /* last＝{pid, key, rows, at} 最後一次成功取得的原始到站資料 */
-    let lastTry=0, busy=false, active=true, visible=true, idle=false, lastTouch=now(), hiddenAt=0;
+    let leg=1, last=null; /* last＝{pid, key, rows, at} 目前組合最後一次成功取得的原始到站資料 */
+    const kept=new Map(); /* 組合 id → 同樣格式的到站資料，切回來時用 */
+    let lastTry=0, busy=false, again=null, /* again：查詢中又有人要查（null＝沒有；false＝使用者操作） */ active=true, visible=true, idle=false, lastTouch=now(), hiddenAt=0;
     let demo=false, screen={loading:TEXT.loading,board:null}, legNote=null, message='', stampAt=null, stale=true; /* 還沒拿到資料：狀態燈先暗著 */
 
     const onBoard=()=>active&&visible;
@@ -93,7 +98,31 @@
       if(!last||!p||last.pid!==p.id) return;
       if(showLast(false,true)) return;
       /* 路線改了，手上的到站資料對不上：顯示載入中，這次心跳就重查 */
-      last=null; lastTry=0; loading(TEXT.loading); emit(false);
+      kept.delete(p.id); last=null; lastTry=0; loading(TEXT.loading); emit(false);
+    }
+    /* 換了目前組合或回到看板：手上有這組 3 分鐘內的資料就先畫出來，到了更新時間才在背景查；
+       沒有才顯示「載入中…」並查詢 */
+    function resume(){
+      const p=store.current();
+      if(!p||!tdx.hasKey()||demo) return refresh(false);
+      const e=kept.get(p.id);
+      last=e&&now()-e.at<=KEEP_MS?e:null;
+      message='';
+      if(last){
+        lastTry=last.at; stampAt=last.at; stale=false;
+        if(showLast(true,true)){
+          if(now()-lastTry>=refreshDelay()) return refresh(true);
+          return;
+        }
+        kept.delete(p.id); last=null; /* 路線改了，資料對不上 */
+      }
+      lastTry=0; stampAt=null; stale=true; loading(TEXT.loading); emit(false);
+      return refresh(false);
+    }
+    /* 只留 3 分鐘內的資料 */
+    function keep(entry){
+      for(const [id,e] of kept) if(now()-e.at>KEEP_MS) kept.delete(id);
+      kept.set(entry.pid,entry);
     }
     /* 依最近一班車決定多久查一次（由看板內容決定）：3 分鐘內 30 秒、其他 60 秒、沒有即時資料 90 秒 */
     function refreshDelay(){
@@ -109,15 +138,16 @@
         emit(true); return;
       }
       if(demo){demo=false; emit(false)}
-      if(busy) return;
+      if(busy){again=again===null?!!auto:again&&!!auto; return} /* 查完馬上接著查 */
       const pid=p.id, prevTry=lastTry;
       busy=true; lastTry=now(); emit(false);
-      const opts={auto:!!auto,onWait:(s,why)=>{message=waitText(s,why); emit(false)}};
+      const opts={auto:!!auto,cancel:()=>!stillHere(pid),
+        onWait:(s,why)=>{if(stillHere(pid)){message=waitText(s,why); emit(false)}}};
       try{
         if(store.needsRoutes(pid)){
           if(!last||last.pid!==pid){loading(TEXT.finding); emit(false)}
           const found=await finder.resolve(p,opts);
-          if(found===null){lastTry=prevTry; return} /* 這輪跳過，下次心跳再試 */
+          if(found===null){if(stillHere(pid)) lastTry=prevTry; return} /* 這輪跳過（或已切換組合），下次心跳再試 */
           p=store.setRoutes(pid,found.routes,found);
           if(!p||!stillHere(pid)) return; /* 等待期間組合被刪除或切換了 */
         }
@@ -132,20 +162,22 @@
         }
         /* 轉乘組合兩段的站牌一起查（同縣市合併成一次），切換段落時不用再查 */
         const rows=await tdx.arrivals(p.via?p.routes.concat(p.routes2||[]):p.routes,opts);
-        if(rows===null){lastTry=prevTry; return}
-        if(!stillHere(pid)) return; /* 等待期間使用者切換了組合 */
-        const at=now();
-        last={pid,key:keyOf(p),rows,at};
+        if(rows===null){if(stillHere(pid)) lastTry=prevTry; return}
+        const at=now(), got={pid,key:keyOf(p),rows,at};
+        keep(got); /* 等待期間切換了組合也存起來，切回來時用得到 */
+        if(!stillHere(pid)) return;
+        last=got;
         lastTry=at; /* 從拿到資料起算下次更新（排隊等很久時不會一查完又馬上再查） */
         stale=false; stampAt=at; message='';
         showLast(true,false);
       }catch(e){
+        if(!stillHere(pid)) return; /* 舊組合的錯誤不顯示在新組合上 */
         message=(e&&e.message||'查詢失敗')+(e&&e.kind==='rate'?TEXT.rateTail:'');
         stale=true; emit(false);
       }finally{
         busy=false;
-        if(!stillHere(pid)) lastTry=0; /* 讓下一次心跳馬上查新的組合 */
         emit(false);
+        if(again!==null){const a=again; again=null; if(onBoard()) refresh(a)}
       }
     }
 
@@ -163,8 +195,7 @@
       },
       select(id){
         if(!store.select(id)) return false;
-        leg=1; loading(TEXT.loading); emit(false);
-        refresh(false);
+        leg=1; resume();
         return true;
       },
       switchLeg(){
@@ -176,7 +207,7 @@
       },
       setActive(on){
         active=!!on;
-        if(active) refresh(false);
+        if(active) resume();
       },
       leave(){visible=false; hiddenAt=now()},
       back(pick){
@@ -185,7 +216,7 @@
         const reopened=hiddenAt&&now()-hiddenAt>=REOPEN_MS; hiddenAt=0;
         if(reopened&&active){
           const wasLeg2=leg!==1; leg=1; /* 重新打開時，轉乘組合回到第一段 */
-          if(pick&&pick()){loading(TEXT.loading); emit(false); refresh(false); return}
+          if(pick&&pick()){resume(); return}
           if(wasLeg2) showLast(true,false);
         }
         emit(false);

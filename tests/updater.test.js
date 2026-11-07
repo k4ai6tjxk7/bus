@@ -118,21 +118,67 @@ test('找路線時被跳過也一樣：下次心跳再試', async()=>{
 
 /* ---------- 切換組合、段落 ---------- */
 
-test('查詢途中切換組合：舊結果丟掉，下一次心跳馬上查新組合', async()=>{
+test('查詢途中切換組合：舊結果不畫但存起來，查完馬上接著查新組合', async()=>{
   let release;
   const s=setup({pairs:[P('a'),P('b',{routes:[R('L2','S2')]})],
     eta:r=>r[0].stop==='S1'?new Promise(ok=>{release=()=>ok([row('L1','S1',400)])}):[row('L2','S2',300)]});
   s.up.start(); await settle();
   assert.equal(s.up.select('b'),true);
   assert.equal(s.view().loading,'載入中…'); assert.equal(s.view().pair.id,'b');
-  release(); await settle();
-  assert.equal(s.view().loading,'載入中…','舊組合的結果不畫');
-  assert.equal(s.view().stampAt,null,'舊組合的資料時間也不算');
   assert.equal(s.etas(),1,'舊查詢還在跑時不重複送');
-  await s.at(5000);
-  assert.deepEqual(s.calls.map(c=>c.stops[0]),['S1','S2']);
+  release(); await settle();
+  assert.deepEqual(s.calls.map(c=>[c.stops[0],c.auto]),[['S1',false],['S2',false]],'舊的一查完就接著查新組合，不用等心跳');
   assert.equal(hero(s.view()),'L2 5分');
+  s.up.select('a');
+  assert.equal(hero(s.view()),'L1 6分','舊組合查到的資料留著，切回去直接顯示');
+  assert.equal(s.etas(),2);
   assert.equal(s.up.select('不存在'),false);
+});
+
+test('查詢途中切換組合：舊組合的錯誤不顯示在新組合上', async()=>{
+  let fail;
+  const s=setup({pairs:[P('a'),P('b',{routes:[R('L2','S2')]})],
+    eta:r=>r[0].stop==='S1'?new Promise((ok,no)=>{fail=()=>no(Object.assign(new Error('網路連線失敗'),{kind:'network'}))}):[row('L2','S2',300)]});
+  s.up.start(); await settle();
+  s.up.select('b'); fail(); await settle();
+  assert.ok(!s.views.some(v=>v.pair.id==='b'&&v.message),'畫面上不閃出舊組合的錯誤'); assert.equal(hero(s.view()),'L2 5分'); assert.equal(s.view().stale,false);
+});
+
+test('切換組合：3 分鐘內的資料先顯示，不顯示載入中；到更新時間才在背景查', async()=>{
+  const s=setup({pairs:[P('a'),P('b',{routes:[R('L2','S2')]})],eta:r=>[row(r[0].name,r[0].stop,400)]});
+  await s.up.start(); await settle();
+  s.up.select('b'); await settle();
+  assert.equal(s.etas(),2);
+  s.clock.t=T0+20000; s.up.select('a');
+  assert.ok(!s.views.slice(-3).some(v=>v.loading),'不轉圈');
+  assert.equal(hero(s.view()),'L1 6分'); assert.equal(s.view().stampAt,T0); assert.equal(s.view().stale,false);
+  await settle(); assert.equal(s.etas(),2,'最近一班 6 分鐘，60 秒內的資料不用重查');
+  await s.at(59000); assert.equal(s.etas(),2);
+  await s.at(60000); assert.equal(s.etas(),3); assert.deepEqual(s.calls[2],{kind:'eta',stops:['S1'],auto:true},'到時間在背景查（自動更新，不排隊）');
+  s.clock.t=T0+90000; s.up.select('b');
+  assert.ok(s.views.some(v=>v.pair.id==='b'&&hero(v)==='L2 5分'),'切回 b 先顯示 b 的舊資料（已扣倒數）');
+  await settle(); assert.equal(s.etas(),4); assert.equal(s.calls[3].auto,true,'b 的資料已超過更新時間：背景查');
+});
+
+test('切換組合：資料超過 3 分鐘就不用，顯示載入中並查', async()=>{
+  const s=setup({pairs:[P('a'),P('b',{routes:[R('L2','S2')]})],eta:r=>[row(r[0].name,r[0].stop,400)]});
+  await s.up.start(); await settle();
+  s.up.select('b'); await settle();
+  s.clock.t=T0+3*60000+1000; s.up.select('a');
+  assert.equal(s.view().loading,'載入中…'); assert.equal(s.view().stampAt,null);
+  await settle(); assert.deepEqual(s.calls.slice(-1),[{kind:'eta',stops:['S1'],auto:false}]);
+});
+
+test('切換組合時，舊組合還在排隊等額度的查詢直接取消', async()=>{
+  let cancelled=null;
+  const s=setup({pairs:[P('a'),P('b',{routes:[R('L2','S2')]})],
+    eta:(r,o)=>r[0].stop==='S1'?new Promise(ok=>{const t=setInterval(()=>{if(o.cancel()){clearInterval(t); cancelled=true; ok(null)}},1)}):[row('L2','S2',300)]});
+  s.up.start(); await settle();
+  s.up.select('b');
+  await new Promise(r=>setTimeout(r,20)); await settle();
+  assert.equal(cancelled,true);
+  assert.equal(hero(s.view()),'L2 5分');
+  assert.deepEqual(s.calls.map(c=>c.stops[0]),['S1','S2']);
 });
 
 const TR=P('t',{via:'轉一',routes:[R('L7','S1')],routes2:[R('L10','S9')]});
@@ -194,12 +240,24 @@ test('閒置 10 分鐘暫停自動更新，點一下恢復並馬上查', async()
   s.up.touch(); await settle(); assert.equal(s.etas(),2,'沒有暫停時點畫面不查');
 });
 
-test('在設定頁或 App 在背景時不查；回到看板重查', async()=>{
+test('在設定頁或 App 在背景時不查；回到看板時資料到更新時間才查', async()=>{
   const s=setup();
   await s.up.start(); await settle();
-  s.up.setActive(false); await s.at(5*60000); assert.equal(s.etas(),1);
-  s.up.setActive(true); await settle(); assert.equal(s.etas(),2);
+  s.up.setActive(false); s.clock.t=T0+30000; s.up.setActive(true); await settle();
+  assert.equal(s.etas(),1,'30 秒的資料（最近一班 6 分鐘）不重查'); assert.equal(hero(s.view()),'L1 6分');
+  s.up.setActive(false); await s.at(2*60000); assert.equal(s.etas(),1,'在設定頁不查');
+  s.up.setActive(true); await settle(); assert.equal(s.etas(),2,'超過更新時間，回到看板就查');
   s.up.leave(); await s.at(10*60000); assert.equal(s.etas(),2);
+});
+
+test('在設定頁改了路線：回到看板顯示載入中並查', async()=>{
+  const s=setup();
+  await s.up.start(); await settle();
+  s.up.setActive(false);
+  s.store.setRoutes('a',[R('L3','S3')],{});
+  s.up.setActive(true);
+  assert.equal(s.view().loading,'載入中…');
+  await settle(); assert.deepEqual(s.calls[1],{kind:'eta',stops:['S3'],auto:false});
 });
 
 /* ---------- 這一段不用查 ---------- */

@@ -208,6 +208,13 @@ def tap(p, s):
 def pick_pair(pid):
     return lambda p, s: (p.click('#pairBtn'), p.click(f'#pairMenu button[data-id="{pid}"]'), p.wait_for_timeout(1500))
 
+def pick_now(pid, key):
+    """從選單切換組合，馬上記下看板（看切換當下是不是在轉圈），再等查詢跑完"""
+    def f(p, s):
+        p.click('#pairBtn'); p.click(f'#pairMenu button[data-id="{pid}"]')
+        s[key] = p.inner_text('#hero')
+        p.wait_for_timeout(1500)
+    return f
 def quota_at(ms, n):
     """把查詢額度紀錄塞滿，讓之後的自動更新被跳過"""
     return lambda p, s: p.evaluate("([t,n]) => localStorage.setItem('bus.calls', JSON.stringify(Array(n).fill(t)))", [T0 + ms, n])
@@ -288,6 +295,10 @@ FLOWS = {
         'A10 沒有金鑰：示範資料與引導': ([PA], 'pa', [lambda p, s: (p.evaluate("() => localStorage.removeItem('bus.cfg')"), p.reload(), p.wait_for_timeout(1500)), snap('demo'), grab('guide', '#guide'), grab('stamp', '#stamp'), mark('+30s'), adv(30000), snap('demo2')]),
         'A11 找不到路線的提示': ([ready('pe', '子站', '丑站', [], 'taichung')], 'pe', [wait(1500), snap('none'), mark('+65s'), adv(65000), snap('none2')]),
         'A12 第二段沒車的警告': ([ready('pn', '子站', '丑站', [R('Taichung', 'C1', 'M1', 'C1-0', 2)], 'taichung', '轉一', [R('Taichung', 'C3', 'M3', 'NONE-0', 2)])], 'pn', [wait(1500), snap('leg1'), click('#legBtn', 600), snap('leg2')]),
+        'A14 切換組合後 20 秒內切回：直接顯示剛才的資料，不轉圈不重查': ([PA, PF], 'pa', [wait(1500), mark('to f'), pick_now('pf', 'f'), mark('+20s back to a'), adv(20000), pick_now('pa', 'a'), snap('a2')]),
+        'A15 連續來回切換三組（額度不夠時以前會排隊轉圈）': ([PA, PF, PC], 'pa', [wait(1500), mark('to f'), pick_now('pf', 'f'), mark('to c'), pick_now('pc', 'c'),
+                                                   mark('to a'), pick_now('pa', 'a'), mark('to f'), pick_now('pf', 'f2'), mark('to c'), pick_now('pc', 'c2'), snap('end')]),
+        'A16 設定頁 30 秒回看板：資料還新就不查': ([PA], 'pa', [wait(1500), settings, mark('+30s'), adv(30000), mark('back'), lambda p, s: (p.click('#btnBack'), p.wait_for_timeout(1200)), snap('board')]),
         'A13 全部排除': ([dict(PA, exclude=['L1'])], 'pa', [wait(1500), snap('ex'), mark('+65s'), adv(65000), snap('ex2')]),
     },
     'usage': {

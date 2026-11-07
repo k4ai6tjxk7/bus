@@ -11,6 +11,7 @@
      另外在 bus.pause 記暫停到幾點，只用來顯示是哪一種等待。
    - opts.auto=true（自動更新）：這個操作的額度不夠就整個跳過，回傳 null，不和使用者搶。
    - 使用者操作：排隊等，每秒呼叫 opts.onWait(秒數, 原因)；原因 'limit' 自己保留額度、'paused' 被 TDX 擋。
+   - opts.cancel()：排隊時每輪都問一次，回傳 true 就不等了，整個操作回傳 null（和被跳過一樣）。
 
    錯誤一律是 TdxError：e.kind 為 'nokey' | 'rate' | 'network' | 'auth' | 'http'，e.message 可直接顯示。
 
@@ -57,6 +58,7 @@
     function take(opts){
       const run=async()=>{
         for(;;){
+          if(opts.cancel&&opts.cancel()) throw SKIP; /* 排隊期間呼叫端已經不需要了（例如切換了組合） */
           const a=calls(), t=now();
           if(a.length<RL_MAX){a.push(t); storage.set('bus.calls',a); return}
           if(opts.auto) throw SKIP;

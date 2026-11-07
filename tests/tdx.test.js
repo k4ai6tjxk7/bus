@@ -73,6 +73,15 @@ test('61 秒內最多 4 次：第 5 次排隊並倒數，原因是 limit', async
   assert.ok(waits[0][0]>=60&&waits[0][0]<=62);
 });
 
+test('排隊時呼叫端取消：不再等，整個操作回傳 null，也不送查詢', async()=>{
+  const {tdx,sent,onWait,waits}=setup(ok([]));
+  await tdx.searchStops('甲',{onWait});   /* token + 2 */
+  await tdx.arrivals([{city:'Taipei',stop:'S1'}]); /* 第 4 次，額度用完 */
+  let n=0;
+  const r=await tdx.arrivals([{city:'Taipei',stop:'S1'}],{onWait,cancel:()=>++n>2});
+  assert.equal(r,null); assert.equal(sent.length,4); assert.equal(waits.length,2,'取消前照常倒數');
+});
+
 test('自動更新額度不夠：整個操作跳過回傳 null，一次都不送', async()=>{
   const now=1_000_000_000_000;
   const {tdx,sent}=setup(ok([]),{'bus.calls':[now-1000,now-900,now-800],'bus.tok':{v:'T',exp:now+864e5}});
