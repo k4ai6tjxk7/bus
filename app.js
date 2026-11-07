@@ -184,8 +184,9 @@ $('pairMenu').addEventListener('click',e=>{
   if(b.dataset.act==='manage'){openSettings(true); return}
   const id=b.dataset.id;
   if(id===(curPair()||{}).id) return; /* 點同一組不重查 */
-  if(!store.select(id)) return;
-  why='manual'; updater.select(id); viewStart();
+  const before=why; why='manual'; /* 先設好原因，updater.select 畫畫面時名稱下方才會顯示對的文字 */
+  if(!updater.select(id)){why=before; return}
+  viewStart();
 });
 document.addEventListener('click',e=>{if(!$('pairMenu').hidden&&!$('pairBox').contains(e.target)) closeMenu()});
 
@@ -462,5 +463,6 @@ setInterval(()=>{
 document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState!=='visible'){updater.leave(); closeMenu(); return}
   viewStart();
-  updater.back(()=>{const changed=autoPick(); renderChips(); return changed});
+  /* 自動換了組合，停留時間要從新組合重新算 */
+  updater.back(()=>{const changed=autoPick(); renderChips(); if(changed) viewStart(); return changed});
 });
