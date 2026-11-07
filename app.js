@@ -142,7 +142,7 @@ function openSettings(on,focusId){
   $('board').hidden=on; $('settings').hidden=!on; closeMenu();
   if(on) updater.setActive(false);
   if(on){
-    const k=tdx.key(); $('cid').value=k.id; $('csec').value=k.secret; renderPairs(); renderUsage(); renderStyles(); renderRegions(); $('viaPick').innerHTML='';
+    const k=tdx.key(); $('cid').value=k.id; $('csec').value=k.secret; renderPairs(); renderUsage(); renderStyles(); renderTheme(); renderRegions(); $('viaPick').innerHTML='';
     const f=focusId&&$(focusId);
     if(f){f.scrollIntoView({block:'center'}); f.focus({preventScroll:true})} else window.scrollTo(0,0);
   } else {renderChips(); updater.setActive(true); viewStart()}
@@ -291,6 +291,15 @@ function renderStyles(){
     <span><b>${esc(s.name)}</b><small>${esc(s.desc)}</small></span></label>`).join('');
 }
 $('styleList').onchange=e=>{const id=e.target.value; if(styleSetting.set(id)) styleSwitcher.show(id)};
+
+/* 深淺色：自動（跟手機）／淺色／深色，選了馬上換；畫面與 3D 場景由 theme.js 通知 */
+const THEMES=[['auto','自動'],['light','淺色'],['dark','深色']];
+function renderTheme(){
+  const cur=Theme.page.current(), now=Theme.page.systemDark()?'深色':'淺色';  /* 手機現在的設定＝選自動會是哪個 */
+  $('themeSeg').innerHTML=THEMES.map(([m,name])=>`<button class="btn" type="button" data-mode="${m}" aria-pressed="${m===cur}">${m==='auto'?`${name}（手機：${now}）`:name}</button>`).join('');
+}
+$('themeSeg').onclick=e=>{const b=e.target.closest('button[data-mode]'); if(b&&Theme.page.set(b.dataset.mode)) renderTheme()};
+Theme.page.onChange(renderTheme);
 
 /* 生活圈：預設用最後新增那組的生活圈；換生活圈時站名要重新搜尋 */
 function renderRegions(){

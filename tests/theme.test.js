@@ -42,7 +42,9 @@ test('儲存讀不到（丟錯）也當成自動', ()=>{
 test('手動設定蓋過系統', ()=>{
   const a=make('light',true);
   assert.equal(a.t.isDark(),false); assert.equal(a.root.a['data-theme'],'light');
+  assert.equal(a.t.systemDark(),true,'設定頁「自動」後面標的是系統的結果');
   const b=make('dark',false);
+  assert.equal(b.t.systemDark(),false);
   assert.equal(b.t.isDark(),true); assert.equal(b.root.a['data-theme'],'dark'); assert.equal(b.meta.a.content,'#0c1114');
 });
 

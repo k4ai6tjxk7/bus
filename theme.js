@@ -8,6 +8,7 @@
      current()    目前的設定：'auto'、'light' 或 'dark'
      set(mode)    換設定；不認得的值回傳 false、不寫入
      isDark()     現在畫面是不是深色（自動時看系統）
+     systemDark() 系統現在是不是深色（設定頁「自動」後面標的就是這個）
      onChange(fn) 畫面的深淺色真的變了才通知（手動切換、或自動時系統切換）；回傳取消函式
    storage：{get,set}；mq：matchMedia('(prefers-color-scheme: dark)')，沒有就當淺色；
    root：設 data-theme 的元素；meta：手機狀態列顏色的 <meta name="theme-color">，可省略。
@@ -19,7 +20,8 @@
   function createTheme({storage,mq,root:el,meta}){
     const fns=[];
     const read=()=>{let v; try{v=storage.get(KEY)}catch(e){} return MODES.includes(v)?v:DEFAULT};
-    const isDark=()=>{const m=read(); return m==='dark'||(m==='auto'&&!!(mq&&mq.matches))};
+    const systemDark=()=>!!(mq&&mq.matches);
+    const isDark=()=>{const m=read(); return m==='dark'||(m==='auto'&&systemDark())};
     let shown=null;
     function apply(){
       const dark=isDark(), name=dark?'dark':'light';
@@ -35,6 +37,7 @@
       current:read,
       set(mode){if(!MODES.includes(mode))return false; storage.set(KEY,mode); apply(); return true},
       isDark,
+      systemDark,
       onChange(fn){fns.push(fn); return ()=>{const i=fns.indexOf(fn); if(i>=0) fns.splice(i,1)}},
     };
   }
