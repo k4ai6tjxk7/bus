@@ -3,7 +3,7 @@
    所有和 TDX 打交道的事都在這裡：網址、篩選語法、查哪些縣市、金鑰與 token、查詢額度、錯誤訊息。
    呼叫端只說「搜尋站名」「經過某站的路線」「查到站」「存金鑰」。
    搜尋站名、經過某站的路線：只查 opts.region 生活圈的縣市（見 regions.js，沒給就是雙北）。
-   這裡不判斷站名：routesThrough 收到的是已經算好的關鍵字。站名規則與路線比對（直達、轉乘）都在 routes.js。
+   這裡不判斷站名：routesThrough 收到的是已經算好的關鍵字。站名規則與找路線（直達、轉乘）都在 routes.js。
 
    查詢額度（基礎會員每把金鑰每分鐘 5 次，含取 token）：
    - 任意 61 秒內最多 4 次，留 1 次餘裕。時間戳存在 bus.calls（不含金鑰資訊），跨分頁共用。
@@ -149,7 +149,7 @@
           return list;
         });
       },
-      /* 站名包含 keyword 的所有路線（原始資料，每筆加上 _city），交給路線比對 */
+      /* 站名包含 keyword 的所有路線（原始資料，每筆加上 _city），交給找路線 */
       routesThrough(keyword,opts){
         const reg=Regions.get(opts&&opts.region);
         return op(reg.cities.length,opts,async o=>{

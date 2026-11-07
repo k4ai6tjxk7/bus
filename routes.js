@@ -103,28 +103,38 @@
   }
 
   function createFinder(deps){
-    const through=(name,region,opts)=>deps.routesThrough(stopCore(name),Object.assign({},opts,{region}));
+    /* null 約定只寫在這裡：查到 null 就丟出 SKIPPED，由 skippable 收成整個操作回傳 null；其他錯誤照常往外丟 */
+    const SKIPPED={};
+    async function through(name,region,opts){
+      const raw=await deps.routesThrough(stopCore(name),Object.assign({},opts,{region}));
+      if(raw===null) throw SKIPPED;
+      return raw;
+    }
+    const skippable=fn=>async(...args)=>{
+      try{return await fn(...args)}
+      catch(e){if(e===SKIPPED) return null; throw e}
+    };
     return {
-      async resolve(pair,opts){
-        const rawFrom=await through(pair.from,pair.region,opts); if(rawFrom===null) return null;
+      resolve:skippable(async(pair,opts)=>{
+        const rawFrom=await through(pair.from,pair.region,opts);
         const d=direct(rawFrom,pair.from,pair.to);
         if(!pair.via) return {routes:d};
-        const rawTo=await through(pair.to,pair.region,opts); if(rawTo===null) return null;
+        const rawTo=await through(pair.to,pair.region,opts);
         const c=transfers(rawFrom,rawTo,pair.from,pair.to,{via:pair.via})[0];
         return {routes:c?c.routes1:[],routes2:c?c.routes2:[],direct:d};
-      },
-      async forNewPair(region,from,to,opts){
-        const rawFrom=await through(from,region,opts); if(rawFrom===null) return null;
+      }),
+      forNewPair:skippable(async(region,from,to,opts)=>{
+        const rawFrom=await through(from,region,opts);
         const d=direct(rawFrom,from,to);
         if(d.length) return {direct:d,cands:[]};
-        const rawTo=await through(to,region,opts); if(rawTo===null) return null;
+        const rawTo=await through(to,region,opts);
         return {direct:d,cands:transfers(rawFrom,rawTo,from,to)};
-      },
-      async transferOptions(pair,opts){
-        const rawFrom=await through(pair.from,pair.region,opts); if(rawFrom===null) return null;
-        const rawTo=await through(pair.to,pair.region,opts); if(rawTo===null) return null;
+      }),
+      transferOptions:skippable(async(pair,opts)=>{
+        const rawFrom=await through(pair.from,pair.region,opts);
+        const rawTo=await through(pair.to,pair.region,opts);
         return transfers(rawFrom,rawTo,pair.from,pair.to);
-      }
+      })
     };
   }
 
