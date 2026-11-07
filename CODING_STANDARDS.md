@@ -31,7 +31,10 @@
 - **S5 測試**：
   - 新的 module 要附 `tests/` 自動測試，用 `node --test tests/*.test.js` 執行，不需安裝套件，只用假資料。
   - 測試盡量走 module 的 interface。
-- **S6 版本號**：`index.html` 引用 js 時帶 `?v=`；改到哪支 js，就更新那支的版本號。
+- **S6 版本號**：
+  - `index.html` 引用 js 時帶 `?v=`；改到哪支 js，就更新那支的版本號。
+  - 畫面風格檔（`styles/`）的版本號寫在 `styles.js` 的清單裡。改風格檔要改清單；改了清單（包括新增一款風格）就是改了 `styles.js`，`index.html` 裡 `styles.js` 的版本號也要改。
+  - push 前執行 `node tools/check-versions.js`（和 `origin/main` 比較已 commit 的內容），有漏改會列出來。
 - **S9 名詞**：程式、註解、文件都用 GLOSSARY.md 的名詞；新的概念先補進名詞表。
 
 ## 上線
