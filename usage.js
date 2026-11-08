@@ -8,7 +8,6 @@
    createUsage({storage, pairIds, now})
      storage  get/set（和組合儲存相同）     pairIds() 目前所有組合的 id
    操作：
-     viewStart(id)  開始計算這組看了多久（開啟、切換組合、離開設定頁、從背景回來）
      chose(id, why) 手動或自動選了組合：重新計時，並記下原因（why：guess／last／manual）
      resume(id)     只重新計時，原因不變（從設定頁回看板、從背景回來但沒換組合）
      reason()       原因文字：guess、last 有字；manual 或還沒選是空字串（只在記憶體）
@@ -43,7 +42,6 @@
     const WHY_TEXT={guess:'通常這個時間用這組', last:'上次使用'};
     function start(id){view={id:id||null,since:now(),done:false}}
     return {
-      viewStart(id){start(id)},
       chose(id,why){kind=why||null; start(id)},
       resume(id){start(id)},
       reason(){return WHY_TEXT[kind]||''},

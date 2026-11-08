@@ -42,14 +42,13 @@ function showMsg(t){$('msg').textContent=t||''; $('msg').hidden=!t}
 /* ---------- 使用習慣：記錄、猜常用組合、清除都交給 usage.js ---------- */
 const usage=Usage.createUsage({storage:LS_ADAPTER,pairIds:()=>store.list().map(p=>p.id)});
 /* 只在「打開 App」時呼叫，使用中不會突然跳組合。回傳是否換了組合 */
-let why='last';
 function autoPick(){
   const g=usage.guess();
-  if(g){const before=(curPair()||{}).id; if(store.select(g)){why='guess'; return g!==before}}
-  why='last'; return false;
+  if(g){const before=(curPair()||{}).id; if(store.select(g)){usage.chose(g,'guess'); return g!==before}}
+  const p=curPair(); usage.chose(p&&p.id,'last'); return false;
 }
-/* 停留在同一組超過 20 秒才算真的有在看（規則在 usage.js） */
-function viewStart(){const p=curPair(); usage.viewStart(p&&p.id)}
+/* 停留在同一組超過 20 秒才算真的有在看；選組合的原因與計時都交給 usage.js（chose／resume） */
+function resumeView(){const p=curPair(); usage.resume(p&&p.id)}
 
 const CHECK='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>';
 function closeMenu(){$('pairMenu').hidden=true; $('pairBtn').setAttribute('aria-expanded','false')}
@@ -59,7 +58,7 @@ function renderChips(){
   $('pairBox').hidden=list.length<2;
   $('pairName').textContent=p?p.name:'';
   const tip=!LS.get('bus.tip',false);
-  const w=tip?'點這裡切換其他組合':why==='guess'?'通常這個時間用這組':why==='last'?'上次使用':'';
+  const w=tip?'點這裡切換其他組合':usage.reason();
   renderHidden();
   $('pairWhy').textContent=w; $('pairWhy').hidden=!w; $('pairWhy').classList.toggle('tip',tip);
   $('pairMenu').innerHTML=list.map(x=>{const on=p&&x.id===p.id;
@@ -95,9 +94,9 @@ $('pairMenu').addEventListener('click',e=>{
   if(b.dataset.act==='manage'){openSettings(true); return}
   const id=b.dataset.id;
   if(id===(curPair()||{}).id) return; /* 點同一組不重查 */
-  const before=why; why='manual'; /* 先設好原因，updater.select 畫畫面時名稱下方才會顯示對的文字 */
-  if(!updater.select(id)){why=before; return}
-  viewStart();
+  const before=(curPair()||{}).id;
+  usage.chose(id,'manual'); /* 先記好原因，updater.select 畫畫面時名稱下方才會顯示對的文字 */
+  if(!updater.select(id)) usage.resume(before);
 });
 document.addEventListener('click',e=>{if(!$('pairMenu').hidden&&!$('pairBox').contains(e.target)) closeMenu()});
 
@@ -154,7 +153,7 @@ function openSettings(on,focusId){
     const k=tdx.key(); $('cid').value=k.id; $('csec').value=k.secret; renderPairs(); renderUsage(); renderStyles(); renderTheme(); renderRegions(); resetRegion();
     const f=focusId&&$(focusId);
     if(f){f.scrollIntoView({block:'center'}); f.focus({preventScroll:true})} else window.scrollTo(0,0);
-  } else {renderChips(); updater.setActive(true); viewStart()}
+  } else {renderChips(); updater.setActive(true); resumeView()}
 }
 
 /* ---------- 新手引導 ---------- */
@@ -387,7 +386,7 @@ $('btnAdd').onclick=async()=>{
 
 /* ---------- 啟動 ---------- */
 /* 先決定要看哪一組，再送第一次查詢，避免先查錯的組合又切換而多花一次 */
-autoPick(); renderChips(); updater.start(); viewStart();
+autoPick(); renderChips(); updater.start();
 function onBoard(){return document.visibilityState==='visible'&&$('settings').hidden}
 document.addEventListener('pointerdown',()=>updater.touch(),{passive:true});
 /* 心跳：每 5 秒更新倒數，時間到了才真的去查 TDX（由到站更新決定） */
@@ -399,8 +398,8 @@ setInterval(()=>{
 /* 離開超過 30 分鐘再回來，視為重新打開 App：到站更新回到第一段，這裡重新判斷要看哪一組 */
 document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState!=='visible'){updater.leave(); closeMenu(); return}
-  viewStart();
-  /* 自動換了組合，停留時間要從新組合重新算 */
-  updater.back(()=>{const changed=autoPick(); renderChips(); if(changed) viewStart(); return changed});
+  resumeView();
+  /* 自動選組合時 usage.chose 會重新計時並記下原因 */
+  updater.back(()=>{const changed=autoPick(); renderChips(); return changed});
 });
 })();
