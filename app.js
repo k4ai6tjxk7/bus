@@ -154,7 +154,7 @@ function openSettings(on,focusId){
 /* ---------- 新手引導 ---------- */
 const TDX_SITE='https://tdx.transportdata.tw/';
 /* 顯名聲明：設定頁最下面的「資料來源」與新手引導共用同一行 */
-const SOURCE_HTML=`資料介接「交通部TDX平臺」（交通部運輸資料流通服務平臺）<a href="${TDX_SITE}" target="_blank" rel="noopener noreferrer">TDX 網站</a>`;
+const SOURCE_HTML=`<img class="tdx-logo" src="tdxlogo.png" width="367" height="68" alt="TDX 交通部運輸資料流通服務平臺標章">資料介接「交通部TDX平臺」（交通部運輸資料流通服務平臺）<a href="${TDX_SITE}" target="_blank" rel="noopener noreferrer">TDX 網站</a>`;
 $('sourceText').innerHTML=SOURCE_HTML;
 function renderGuide(hasKey,hasPair){
   const g=$('guide');
