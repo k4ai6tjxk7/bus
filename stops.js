@@ -4,7 +4,7 @@
    load(生活圈 id) 回傳解析後的站名檔（App 用 fetch 加 ?v=VERSION）；tdx 只用 searchStops。
    站名檔是不可信資料：整檔不合格就作廢（改用 TDX），單筆不合格就略過。 */
 (function(root){
-  const VERSION='20261108a';
+  const VERSION='20261108f';
   const MAX_STOPS=30000, MAX_NAME=40, MAX_SHOWN=100;
   /* 控制字元與看不見的格式字元（Unicode Cc、Cf：零寬字元、方向控制字元、軟連字號、BOM……） */
   const BAD_CHARS=/[\p{Cc}\p{Cf}]/u;
