@@ -5,7 +5,7 @@
    改用 TDX（備案）時，同一生活圈＋同一關鍵字在這個 index 的生命期內只查一次；live 每次都真的查，成功才更新快取。
    站名檔是不可信資料：整檔不合格就作廢（改用 TDX），單筆不合格就略過。 */
 (function(root){
-  const VERSION='20261108j';
+  const VERSION='20261108l';
   const MAX_STOPS=30000, MAX_NAME=40, MAX_SHOWN=100;
   /* 控制字元與看不見的格式字元（Unicode Cc、Cf：零寬字元、方向控制字元、軟連字號、BOM……） */
   const BAD_CHARS=/[\p{Cc}\p{Cf}]/u;
@@ -66,7 +66,35 @@
     };
   }
 
-  const api={VERSION,createStopIndex};
+  /* 站名搜尋（一般搜尋）：index 是 createStopIndex 的回傳值；getRegion() 回傳畫面目前的生活圈。
+     search(kw)：關鍵字 trim 後空白就回傳 null、不呼叫 index；否則開始時先收起即時搜尋按鈕，結果回來才換成新一批。
+     items：[{text, value, selectable}]；超過 100 筆最後一個是不能選的提示；0 筆是「找不到這個站名」。
+     state()：目前這一批 {kw, region, items, liveShown}，還沒搜尋過回傳 null。 */
+  function createStopSearch({index,getRegion}){
+    let batch=null, liveShown=false;
+    const itemsOf=(names,more)=>{
+      if(!names.length) return [{text:'找不到這個站名',value:null,selectable:false}];
+      const items=names.map(n=>({text:n,value:n,selectable:true}));
+      if(more>0) items.push({text:`還有 ${more} 筆，請多打幾個字`,value:null,selectable:false});
+      return items;
+    };
+    const state=()=>batch&&{...batch,liveShown};
+    return {
+      async search(kw){
+        const q=String(kw||'').trim();
+        if(!q) return null;
+        const region=getRegion();
+        liveShown=false;
+        const {names,more}=await index.search(q,{region});
+        batch={kw:q,region,items:itemsOf(names,more)};
+        liveShown=true;
+        return state();
+      },
+      state,
+    };
+  }
+
+  const api={VERSION,createStopIndex,createStopSearch};
   if(typeof module!=='undefined'&&module.exports) module.exports=api;
   else root.Stops=api;
 })(typeof window!=='undefined'?window:this);
