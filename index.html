@@ -196,6 +196,8 @@ input,select{font:inherit;font-size:16px;color:var(--ink);background:var(--bg);b
 .pair b{font-size:15px}
 .small{font-size:13px;color:var(--muted)}
 .btns{display:flex;gap:6px;flex-wrap:wrap}
+.tdxrow{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;font-size:13px;color:var(--muted)}
+.tdxrow .btn{padding:6px 12px;font-size:13px}
 .back{align-self:flex-start}
 .pair{flex-wrap:wrap}
 .exw{flex-basis:100%;display:flex;flex-direction:column;gap:8px;padding-top:4px}
@@ -305,10 +307,12 @@ html[data-framed] #framedNotice{display:flex;flex-direction:column;align-items:c
       <label>上車站
         <span class="inline"><input id="kwFrom" placeholder="輸入站名關鍵字"><button class="btn" id="sFrom" type="button">搜尋</button></span>
         <select id="selFrom" hidden></select>
+        <div class="tdxrow" id="liveFrom" hidden>沒有你要的站？<button class="btn" id="liveSFrom" type="button">用 TDX 即時搜尋</button></div>
       </label>
       <label>下車站
         <span class="inline"><input id="kwTo" placeholder="輸入站名關鍵字"><button class="btn" id="sTo" type="button">搜尋</button></span>
         <select id="selTo" hidden></select>
+        <div class="tdxrow" id="liveTo" hidden>沒有你要的站？<button class="btn" id="liveSTo" type="button">用 TDX 即時搜尋</button></div>
       </label>
       <button class="btn primary" id="btnAdd" type="button">新增並找出路線</button>
       <div class="small" id="addStatus"></div>
@@ -328,12 +332,12 @@ html[data-framed] #framedNotice{display:flex;flex-direction:column;align-items:c
 <script src="pairs.js?v=20261106b"></script>
 <script src="board.js?v=20261108a"></script>
 <script src="tdx.js?v=20261107b"></script>
-<script src="stops.js?v=20261108d"></script>
+<script src="stops.js?v=20261108f"></script>
 <script src="usage.js?v=20261106a"></script>
 <script src="updater.js?v=20261107b"></script>
 <script src="manage.js?v=20261107b"></script>
 <script src="styles.js?v=20261108a"></script>
 <script src="scene.js?v=20261107e"></script>
-<script src="app.js?v=20261108f"></script>
+<script src="app.js?v=20261108g"></script>
 </body>
 </html>

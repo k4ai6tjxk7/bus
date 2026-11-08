@@ -320,25 +320,40 @@ function renderRegions(){
 }
 renderRegions();
 $('pRegion').onchange=()=>{
-  for(const id of ['selFrom','selTo']){$(id).hidden=true; $(id).innerHTML=''}
+  for(const s of ['From','To']){$('sel'+s).hidden=true; $('sel'+s).innerHTML=''; $('live'+s).hidden=true}
   $('viaPick').innerHTML=''; $('addStatus').textContent='';
 };
-function bindSearch(btn,kw,sel){
-  $(btn).onclick=async()=>{
-    const k=$(kw).value.trim(); if(!k||$(btn).disabled)return;
-    $(btn).textContent='搜尋中'; $(btn).disabled=true;
+/* 搜尋站名（上車站、下車站各一組）：一般搜尋走站名檔；「用 TDX 即時搜尋」按鈕用上一次搜尋的關鍵字與生活圈直接查 TDX，結果取代選單 */
+const LIVE_LABEL='用 TDX 即時搜尋';
+function bindSearch(btn,kw,sel,row,liveBtn){
+  let lastSearch=null; /* 選單目前這批結果的關鍵字與生活圈 */
+  const setBusy=on=>{$(btn).disabled=on; $(liveBtn).disabled=on};
+  async function run(live){
+    const k=live?lastSearch.kw:$(kw).value.trim(), region=live?lastSearch.region:$('pRegion').value;
+    if(!k) return;
+    const activeBtn=$(live?liveBtn:btn), label=live?LIVE_LABEL:'搜尋';
+    activeBtn.textContent='搜尋中'; setBusy(true);
+    if(!live) $(row).hidden=true; /* 換成新的一批結果前先收起按鈕 */
     try{
-      const {names:list,more}=await stopIndex.search(k,{region:$('pRegion').value,onWait:s=>{$(btn).textContent='等 '+s+' 秒'}});
-      /* 超過 100 筆：最後一個選項不能選（disabled、value 空），只提示還有幾筆 */
-      const opts=list.map(n=>`<option>${esc(n)}</option>`);
-      if(more>0) opts.push(`<option value="" disabled>還有 ${more} 筆，請多打幾個字</option>`);
-      $(sel).innerHTML=list.length?opts.join(''):'<option value="">找不到這個站名</option>';
-      $(sel).hidden=false; $('addStatus').textContent='';
+      const {names:list,more}=await stopIndex.search(k,{region,live,onWait:s=>{activeBtn.textContent='等 '+s+' 秒'}});
+      /* 搜尋途中換了生活圈：舊區的結果丟掉，不寫回選單也不顯示按鈕 */
+      if(region===$('pRegion').value){
+        /* 超過 100 筆：最後一個選項不能選（disabled、value 空），只提示還有幾筆 */
+        const opts=list.map(n=>`<option>${esc(n)}</option>`);
+        if(more>0) opts.push(`<option value="" disabled>還有 ${more} 筆，請多打幾個字</option>`);
+        $(sel).innerHTML=list.length?opts.join(''):'<option value="">找不到這個站名</option>';
+        $(sel).hidden=false; $('addStatus').textContent='';
+        lastSearch={kw:k,region};
+        /* 有搜尋結果（含 0 筆）就顯示按鈕，即時搜尋的結果也一樣（按了才再查，不會自動重查） */
+        $(row).hidden=false;
+      }
     }catch(e){setErr(e)}
-    $(btn).textContent='搜尋'; $(btn).disabled=false;
-  };
+    activeBtn.textContent=label; setBusy(false);
+  }
+  $(btn).onclick=()=>{ if(!$(kw).value.trim()||$(btn).disabled)return; run(false) };
+  $(liveBtn).onclick=()=>{ if(!lastSearch||$(liveBtn).disabled)return; run(true) };
 }
-bindSearch('sFrom','kwFrom','selFrom'); bindSearch('sTo','kwTo','selTo');
+bindSearch('sFrom','kwFrom','selFrom','liveFrom','liveSFrom'); bindSearch('sTo','kwTo','selTo','liveTo','liveSTo');
 
 $('btnAdd').onclick=async()=>{
   const r=await pm.add({name:$('pName').value,region:$('pRegion').value,
