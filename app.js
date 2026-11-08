@@ -151,7 +151,7 @@ function openSettings(on,focusId){
   $('board').hidden=on; $('settings').hidden=!on; closeMenu();
   if(on) updater.setActive(false);
   if(on){
-    const k=tdx.key(); $('cid').value=k.id; $('csec').value=k.secret; renderPairs(); renderUsage(); renderStyles(); renderTheme(); resetRegion();
+    const k=tdx.key(); $('cid').value=k.id; $('csec').value=k.secret; renderPairs(); renderUsage(); renderStyles(); renderTheme(); renderRegions(); resetRegion();
     const f=focusId&&$(focusId);
     if(f){f.scrollIntoView({block:'center'}); f.focus({preventScroll:true})} else window.scrollTo(0,0);
   } else {renderChips(); updater.setActive(true); viewStart()}
@@ -328,7 +328,7 @@ const SEARCH_SIDES=['From','To'].map(k=>{
 /* 選單：只在結果換了（搜尋回來、作廢）時重畫，等候秒數更新不動選單，免得選到一半被重設。提示項目（value 為 null）畫成 value=""、disabled */
 function renderSearchMenu(side){
   const st=side.search.state(), sel=$(side.sel);
-  sel.innerHTML=st?st.items.map(i=>i.value===null?`<option value="" disabled>${esc(i.text)}</option>`:i.selectable?`<option>${esc(i.text)}</option>`:`<option value="${esc(i.value)}" disabled>${esc(i.text)}</option>`).join(''):'';
+  sel.innerHTML=st?st.items.map(i=>i.value===null?`<option value="" disabled>${esc(i.text)}</option>`:`<option>${esc(i.text)}</option>`).join(''):'';
   sel.hidden=!st;
   renderSearchButtons(side);
 }
