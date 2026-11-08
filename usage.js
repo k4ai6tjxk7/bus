@@ -9,6 +9,9 @@
      storage  get/set（和組合儲存相同）     pairIds() 目前所有組合的 id
    操作：
      viewStart(id)  開始計算這組看了多久（開啟、切換組合、離開設定頁、從背景回來）
+     chose(id, why) 手動或自動選了組合：重新計時，並記下原因（why：guess／last／manual）
+     resume(id)     只重新計時，原因不變（從設定頁回看板、從背景回來但沒換組合）
+     reason()       原因文字：guess、last 有字；manual 或還沒選是空字串（只在記憶體）
      viewTick(id)   心跳時呼叫：同一組連續看滿 20 秒才記一筆；同一次只記一次，
                     同一組 20 分鐘內已經記過也不再記
      guess()        最近 30 天、平日/假日分開、現在前後 1 小時內看最多次的組合；
@@ -36,9 +39,14 @@
       storage.set(KEY,a.slice(-MAX));
     }
 
-    let view={id:null,since:0,done:false};
+    let view={id:null,since:0,done:false}, kind=null;
+    const WHY_TEXT={guess:'通常這個時間用這組', last:'上次使用'};
+    function start(id){view={id:id||null,since:now(),done:false}}
     return {
-      viewStart(id){view={id:id||null,since:now(),done:false}},
+      viewStart(id){start(id)},
+      chose(id,why){kind=why||null; start(id)},
+      resume(id){start(id)},
+      reason(){return WHY_TEXT[kind]||''},
       viewTick(id){
         if(view.done||!id||id!==view.id) return;
         if(now()-view.since>=VIEW_MS){view.done=true; add(id)}
