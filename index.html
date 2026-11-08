@@ -167,6 +167,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .urlbox .btn{padding:6px 12px;font-size:13px}
 .hint{font-size:12.5px;color:var(--muted)}
 .hint b{color:var(--ink);font-weight:500}
+.src a{color:var(--route);font-weight:500}
 
 @media (prefers-reduced-motion:no-preference){
   .blink{animation:blink 1.1s steps(2) infinite}
@@ -311,6 +312,11 @@ html[data-framed] #framedNotice{display:flex;flex-direction:column;align-items:c
       <div class="small" id="addStatus"></div>
       <div class="vp" id="viaPick"></div>
     </section>
+
+    <section class="panel" id="sourcePanel">
+      <h2>資料來源</h2>
+      <p id="sourceText" class="src"></p>
+    </section>
   </div>
 </div>
 
@@ -325,6 +331,6 @@ html[data-framed] #framedNotice{display:flex;flex-direction:column;align-items:c
 <script src="manage.js?v=20261107b"></script>
 <script src="styles.js?v=20261108a"></script>
 <script src="scene.js?v=20261107e"></script>
-<script src="app.js?v=20261108b"></script>
+<script src="app.js?v=20261108c"></script>
 </body>
 </html>

@@ -153,6 +153,9 @@ function openSettings(on,focusId){
 
 /* ---------- 新手引導 ---------- */
 const TDX_SITE='https://tdx.transportdata.tw/';
+/* 顯名聲明：設定頁最下面的「資料來源」與新手引導共用同一行 */
+const SOURCE_HTML=`資料介接「交通部TDX平臺」（交通部運輸資料流通服務平臺）<a href="${TDX_SITE}" target="_blank" rel="noopener noreferrer">TDX 網站</a>`;
+$('sourceText').innerHTML=SOURCE_HTML;
 function renderGuide(hasKey,hasPair){
   const g=$('guide');
   if(hasKey&&hasPair){g.hidden=true; g.innerHTML=''; return}
@@ -176,7 +179,7 @@ function renderGuide(hasKey,hasPair){
       <li class="step ${st(2)}"><span class="num">${hasPair?'✓':'2'}</span><span class="step-t">新增上下車站</span>${s2}</li>
       <li class="step"><span class="num">3</span><span class="step-t">看即時到站</span></li>
     </ol>
-    <div class="hint">小技巧：用 Safari 打開，點<b>分享</b> →<b>加入主畫面</b>，就能像 App 一樣一鍵打開。</div>`;
+    <div class="hint">小技巧：用 Safari 打開，點<b>分享</b> →<b>加入主畫面</b>，就能像 App 一樣一鍵打開。</div><div class="hint src">${SOURCE_HTML}</div>`;
   g.hidden=false;
   const cp=$('gCopy');
   if(cp) cp.onclick=async()=>{
