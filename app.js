@@ -328,8 +328,11 @@ function bindSearch(btn,kw,sel){
     const k=$(kw).value.trim(); if(!k||$(btn).disabled)return;
     $(btn).textContent='搜尋中'; $(btn).disabled=true;
     try{
-      const {names:list}=await stopIndex.search(k,{region:$('pRegion').value,onWait:s=>{$(btn).textContent='等 '+s+' 秒'}});
-      $(sel).innerHTML=list.length?list.map(n=>`<option>${esc(n)}</option>`).join(''):'<option value="">找不到這個站名</option>';
+      const {names:list,more}=await stopIndex.search(k,{region:$('pRegion').value,onWait:s=>{$(btn).textContent='等 '+s+' 秒'}});
+      /* 超過 100 筆：最後一個選項不能選（disabled、value 空），只提示還有幾筆 */
+      const opts=list.map(n=>`<option>${esc(n)}</option>`);
+      if(more>0) opts.push(`<option value="" disabled>還有 ${more} 筆，請多打幾個字</option>`);
+      $(sel).innerHTML=list.length?opts.join(''):'<option value="">找不到這個站名</option>';
       $(sel).hidden=false; $('addStatus').textContent='';
     }catch(e){setErr(e)}
     $(btn).textContent='搜尋'; $(btn).disabled=false;
