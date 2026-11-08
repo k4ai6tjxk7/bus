@@ -124,7 +124,6 @@
       catch(e){if(e===SKIP) return null; throw e}
     }
 
-    const stopCache=new Map();
     return {
       hasKey(){return !!(cfg.id&&cfg.secret)},
       key(){return {id:cfg.id,secret:cfg.secret}},
@@ -136,19 +135,16 @@
         await getToken(true,opts||{});
         return true;
       },
-      /* 站名搜尋；同一個生活圈、同一個關鍵字這次打開頁面內只查一次 */
+      /* 站名搜尋；每次都查（快取在站名檔 module） */
       searchStops(kw,opts){
-        const reg=Regions.get(opts&&opts.region), ck=reg.id+'|'+kw;
-        if(stopCache.has(ck)) return Promise.resolve(stopCache.get(ck));
+        const reg=Regions.get(opts&&opts.region);
         return op(reg.cities.length,opts,async o=>{
           const names=new Set();
           for(const city of reg.cities){
             const d=await get('/Stop/City/'+city,{$filter:`contains(StopName/Zh_tw,'${q(kw)}')`,$select:'StopName',$top:'300'},o);
             d.forEach(s=>{if(s&&s.StopName&&typeof s.StopName.Zh_tw==='string') names.add(s.StopName.Zh_tw)});
           }
-          const list=[...names].sort((a,b)=>a.localeCompare(b,'zh-Hant'));
-          stopCache.set(ck,list);
-          return list;
+          return [...names].sort((a,b)=>a.localeCompare(b,'zh-Hant'));
         });
       },
       /* 站名包含 keyword 的所有路線（原始資料，每筆加上 _city），交給找路線 */
