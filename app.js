@@ -22,6 +22,12 @@ const store=PairStore.createPairStore(LS_ADAPTER);
 const tdx=Tdx.createTdx({fetch:(u,o)=>fetch(u,o),storage:LS_ADAPTER});
 /* 找路線（直達、轉乘）全部交給 routes.js；它透過 TDX 查詢取得經過某站的路線 */
 const finder=Routes.createFinder({routesThrough:(k,o)=>tdx.routesThrough(k,o)});
+/* 站名檔：搜尋走本機站名檔，載入失敗時站名檔 module 自動改用 TDX */
+const stopIndex=Stops.createStopIndex({tdx,load:async region=>{
+  const res=await fetch('stops/'+encodeURIComponent(region)+'.json?v='+Stops.VERSION);
+  if(!res.ok) throw new Error('stops '+res.status);
+  return res.json();
+}});
 /* 何時查到站、查完存什麼、看第幾段全部交給到站更新（updater.js）；這裡只負責把畫面資料畫出來 */
 const updater=Updater.createUpdater({store,finder,tdx,onChange:v=>render(v)});
 
@@ -322,7 +328,7 @@ function bindSearch(btn,kw,sel){
     const k=$(kw).value.trim(); if(!k||$(btn).disabled)return;
     $(btn).textContent='搜尋中'; $(btn).disabled=true;
     try{
-      const list=await tdx.searchStops(k,{region:$('pRegion').value,onWait:s=>{$(btn).textContent='等 '+s+' 秒'}}); /* 同生活圈同關鍵字只查一次 */
+      const {names:list}=await stopIndex.search(k,{region:$('pRegion').value,onWait:s=>{$(btn).textContent='等 '+s+' 秒'}});
       $(sel).innerHTML=list.length?list.map(n=>`<option>${esc(n)}</option>`).join(''):'<option value="">找不到這個站名</option>';
       $(sel).hidden=false; $('addStatus').textContent='';
     }catch(e){setErr(e)}
