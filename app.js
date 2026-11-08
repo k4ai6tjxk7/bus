@@ -128,12 +128,13 @@ function renderBoard(b,scene){
   $('otherTitle').hidden=!b.rest.length; $('list').hidden=!b.rest.length;
   $('list').innerHTML=b.rest.map(x=>`<div class="row"><div class="rinfo"><div class="rname">${esc(x.name)}</div><div class="rsub">${esc(x.sub)}</div></div>${etaHtml(x.eta,'eta',false)}</div>`).join('');
 }
-/* 把到站更新交來的畫面資料畫出來。到站狀態都在 updater.js；這裡只記上次畫了什麼，避免每 5 秒重畫組合選單 */
-let drawn={pid:undefined,leg:undefined,stampAt:undefined};
+/* 把到站更新交來的畫面資料畫出來。到站狀態都在 updater.js；這裡只記上次畫了什麼，避免每 5 秒重畫組合選單與新手引導（示範模式下按「複製網址」的字樣與焦點才不會被洗掉） */
+let drawn={pid:undefined,leg:undefined,stampAt:undefined,hasKey:undefined,hasPair:undefined};
 function render(v){
   const pid=v.pair?v.pair.id:null;
   if(pid!==drawn.pid||v.leg!==drawn.leg){drawn.pid=pid; drawn.leg=v.leg; renderChips()}
-  renderGuide(tdx.hasKey(),!!v.pair);
+  const hasKey=tdx.hasKey(), hasPair=!!v.pair;
+  if(hasKey!==drawn.hasKey||hasPair!==drawn.hasPair){drawn.hasKey=hasKey; drawn.hasPair=hasPair; renderGuide(hasKey,hasPair)}
   $('demoNote').hidden=v.mode!=='demo';
   if(v.loading){$('hero').innerHTML=`<div class="board-empty">${esc(v.loading)}</div>`; $('list').hidden=true; $('otherTitle').hidden=true; renderHidden()}
   else if(v.board) renderBoard(v.board,v.scene);
