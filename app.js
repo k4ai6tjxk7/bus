@@ -203,7 +203,7 @@ $('btnRefresh').onclick=()=>updater.refresh();
 $('btnSaveKey').onclick=async()=>{
   $('keyStatus').textContent='測試中…';
   try{
-    await tdx.saveKey($('cid').value,$('csec').value,{onWait:(s,why)=>{$('keyStatus').textContent=why==='paused'?waitText(s,why):'等待查詢額度，約 '+s+' 秒…'}});
+    await tdx.saveKey($('cid').value,$('csec').value,{onWait:(s,why)=>{$('keyStatus').textContent=waitText(s,why)}});
     $('keyStatus').textContent='✓ 金鑰可以用了';
   }catch(e){$('keyStatus').textContent=e.kind==='nokey'?'請填入兩個欄位。':e.message}
 };
@@ -321,10 +321,27 @@ function renderRegions(){
 renderRegions();
 /* 搜尋站名（上車站、下車站各一組）：搜尋的狀態（結果、按鈕、上一次的關鍵字與生活圈）全部在站名搜尋 module（stops.js）；這裡只依它交出的資料畫選單與按鈕 */
 const SEARCH_SIDES=['From','To'].map(k=>{
-  const side={kw:'kw'+k,btn:'s'+k,sel:'sel'+k,row:'live'+k,liveBtn:'liveS'+k};
-  side.search=Stops.createStopSearch({index:stopIndex,getRegion:()=>$('pRegion').value,onWait:()=>renderSearchButtons(side)});
+  const side={kw:'kw'+k,btn:'s'+k,sel:'sel'+k,row:'live'+k,liveBtn:'liveS'+k,fresh:false};
+  /* 排隊時按鈕顯示等 N 秒，狀態列由 renderWaitNote 依 module 的說明畫 */
+  side.search=Stops.createStopSearch({index:stopIndex,getRegion:()=>$('pRegion').value,waitText,onWait:()=>{
+    renderSearchButtons(side); renderWaitNote(side.fresh); side.fresh=false;
+  }});
   return side;
 });
+/* 狀態列的排隊說明只有這一個出口：取第一個有排隊說明的那側（module 交出的 waitNote），都沒有就清掉自己寫的說明。
+   shownNote＝上一次這裡寫進狀態列的字。fresh＝這次是新開始的排隊，不論狀態列現在是什麼都寫；其餘時候（倒數、結束）只在狀態列還是自己寫的字時才動，免得把錯誤訊息蓋掉 */
+let shownNote='';
+function renderWaitNote(fresh){
+  const st=$('addStatus');
+  const note=SEARCH_SIDES.map(s=>s.search.waitNote()).find(t=>t)||'';
+  if(note){
+    if(fresh||st.textContent===shownNote) st.textContent=note;
+    shownNote=note;
+  }else{
+    if(st.textContent===shownNote) st.textContent='';
+    shownNote='';
+  }
+}
 /* 選單：只在結果換了（搜尋回來、作廢）時重畫，等候秒數更新不動選單，免得選到一半被重設。提示項目（value 為 null）畫成 value=""、disabled */
 function renderSearchMenu(side){
   const st=side.search.state(), sel=$(side.sel);
@@ -340,13 +357,15 @@ function renderSearchButtons(side){
   $(side.row).hidden=!(st&&st.liveShown);
 }
 async function runSearch(side,live){
+  side.fresh=true;
   const p=live?side.search.live():side.search.search($(side.kw).value);
   renderSearchButtons(side); /* 搜尋已開始：按鈕顯示搜尋中、收起即時搜尋那一列 */
   try{
     const r=await p;
-    if(r) $('addStatus').textContent='';
+    side.fresh=false;
+    renderWaitNote(false); /* 結束（含作廢）：清掉自己寫的排隊說明；另一側還在排隊就改顯示它的 */
     renderSearchMenu(side);
-  }catch(e){setErr(e); renderSearchButtons(side)}
+  }catch(e){ side.fresh=false; setErr(e); renderSearchButtons(side) } /* 出錯：錯誤訊息保留，不呼叫 renderWaitNote */
 }
 for(const side of SEARCH_SIDES){
   $(side.btn).onclick=()=>{ if(!$(side.kw).value.trim()||$(side.btn).disabled)return; runSearch(side,false) };

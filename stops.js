@@ -5,7 +5,7 @@
    改用 TDX（備案）時，同一生活圈＋同一關鍵字在這個 index 的生命期內只查一次；live 每次都真的查，成功才更新快取。
    站名檔是不可信資料：整檔不合格就作廢（改用 TDX），單筆不合格就略過。 */
 (function(root){
-  const VERSION='20261108o';
+  const VERSION='20261108u';
   const MAX_STOPS=30000, MAX_NAME=40, MAX_SHOWN=100;
   /* 控制字元與看不見的格式字元（Unicode Cc、Cf：零寬字元、方向控制字元、軟連字號、BOM……） */
   const BAD_CHARS=/[\p{Cc}\p{Cf}]/u;
@@ -73,8 +73,9 @@
      state()：目前這一批 {kw, region, items, liveShown} 的複本（一般搜尋進行中 liveShown 為 false），沒有（還沒搜尋或已作廢）回傳 null。
      buttons()：兩顆按鈕的文字與能不能按。
      regionChanged()：生活圈變了，作廢全部。
-     onWait（選用）：排隊中等待秒數更新時通知畫面重畫按鈕文字，通知時 buttons() 已是新的秒數。 */
-  function createStopSearch({index,getRegion,onWait}){
+     onWait（選用）：排隊中等待秒數更新時通知畫面重畫按鈕文字，通知時 buttons() 已是新的秒數。
+     waitText（選用，注入）：到站更新的排隊說明 waitText(秒數, 原因, '搜尋')；waitNote() 回傳它的結果，沒有排隊、沒注入回傳 ''。 */
+  function createStopSearch({index,getRegion,onWait,waitText}){
     let batch=null, seq=0, busy=null; /* seq 每次搜尋或作廢加一，只有最新一次搜尋的結果能寫回；busy＝還沒回來的那一次 {kind:'general'|'live', waitSec}，沒有就 null */
     const LABEL={general:'搜尋',live:'用 TDX 即時搜尋'};
     const itemsOf=(names,more)=>{
@@ -86,11 +87,11 @@
     const state=()=>batch&&{kw:batch.kw,region:batch.region,items:batch.items.map(x=>({...x})),liveShown:!(busy&&busy.kind==='general')};
     /* 開始一次查詢；忙碌時由 search()／live() 擋下，這裡不會重入 */
     async function runSearch(kind,q,region){
-      const mine=++seq, job={kind,waitSec:null};
+      const mine=++seq, job={kind,waitSec:null,why:null};
       busy=job;
       let res, err=null;
       /* onWait 只在排隊時被呼叫；拿到額度後維持最後的等 N 秒直到查完（tdx 不通知額度到手，和原本畫面相同） */
-      try{ res=await index.search(q,{region,live:kind==='live',onWait:s=>{ job.waitSec=s; if(onWait&&busy===job) onWait(); }}); }catch(e){ err=e; }
+      try{ res=await index.search(q,{region,live:kind==='live',onWait:(s,why)=>{ job.waitSec=s; job.why=why; if(onWait&&busy===job) onWait(); }}); }catch(e){ err=e; }
       if(busy===job) busy=null;
       if(mine!==seq) return null;
       /* 生活圈讀法已回傳別區（沒走 regionChanged）：同樣視為作廢，舊區的上一批也不留 */
@@ -116,6 +117,8 @@
         return runSearch('live',batch.kw,batch.region);
       },
       state,
+      /* 排隊時的狀態列說明（和組合管理同一套說法）；沒有排隊、或沒注入 waitText 回傳 '' */
+      waitNote(){ return busy&&busy.waitSec!=null&&waitText?waitText(busy.waitSec,busy.why,'搜尋'):''; },
       /* 按鈕的文字與能不能按：有查詢在跑時兩個都不能按，正在用的那顆顯示「搜尋中」，排隊時「等 N 秒」；結束（含出錯）回原文字 */
       buttons(){
         const label=kind=>busy&&busy.kind===kind?(busy.waitSec!=null?`等 ${busy.waitSec} 秒`:'搜尋中'):LABEL[kind];
