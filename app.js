@@ -151,7 +151,7 @@ function openSettings(on,focusId){
   $('board').hidden=on; $('settings').hidden=!on; closeMenu();
   if(on) updater.setActive(false);
   if(on){
-    const k=tdx.key(); $('cid').value=k.id; $('csec').value=k.secret; renderPairs(); renderUsage(); renderStyles(); renderTheme(); renderRegions(); $('viaPick').innerHTML='';
+    const k=tdx.key(); $('cid').value=k.id; $('csec').value=k.secret; renderPairs(); renderUsage(); renderStyles(); renderTheme(); resetRegion();
     const f=focusId&&$(focusId);
     if(f){f.scrollIntoView({block:'center'}); f.focus({preventScroll:true})} else window.scrollTo(0,0);
   } else {renderChips(); updater.setActive(true); viewStart()}
@@ -319,41 +319,45 @@ function renderRegions(){
   $('pRegion').innerHTML=Regions.LIST.map(r=>`<option value="${r.id}"${r.id===def?' selected':''}>${esc(r.name)}${r.note?'（'+esc(r.note)+'）':''}</option>`).join('');
 }
 renderRegions();
-$('pRegion').onchange=()=>{
-  for(const s of ['From','To']){$('sel'+s).hidden=true; $('sel'+s).innerHTML=''; $('live'+s).hidden=true}
-  $('viaPick').innerHTML=''; $('addStatus').textContent='';
-};
-/* 搜尋站名（上車站、下車站各一組）：一般搜尋走站名檔；「用 TDX 即時搜尋」按鈕用上一次搜尋的關鍵字與生活圈直接查 TDX，結果取代選單 */
-const LIVE_LABEL='用 TDX 即時搜尋';
-function bindSearch(btn,kw,sel,row,liveBtn){
-  let lastSearch=null; /* 選單目前這批結果的關鍵字與生活圈 */
-  const setBusy=on=>{$(btn).disabled=on; $(liveBtn).disabled=on};
-  async function run(live){
-    const k=live?lastSearch.kw:$(kw).value.trim(), region=live?lastSearch.region:$('pRegion').value;
-    if(!k) return;
-    const activeBtn=$(live?liveBtn:btn), label=live?LIVE_LABEL:'搜尋';
-    activeBtn.textContent='搜尋中'; setBusy(true);
-    if(!live) $(row).hidden=true; /* 換成新的一批結果前先收起按鈕 */
-    try{
-      const {names:list,more}=await stopIndex.search(k,{region,live,onWait:s=>{activeBtn.textContent='等 '+s+' 秒'}});
-      /* 搜尋途中換了生活圈：舊區的結果丟掉，不寫回選單也不顯示按鈕 */
-      if(region===$('pRegion').value){
-        /* 超過 100 筆：最後一個選項不能選（disabled、value 空），只提示還有幾筆 */
-        const opts=list.map(n=>`<option>${esc(n)}</option>`);
-        if(more>0) opts.push(`<option value="" disabled>還有 ${more} 筆，請多打幾個字</option>`);
-        $(sel).innerHTML=list.length?opts.join(''):'<option value="">找不到這個站名</option>';
-        $(sel).hidden=false; $('addStatus').textContent='';
-        lastSearch={kw:k,region};
-        /* 有搜尋結果（含 0 筆）就顯示按鈕，即時搜尋的結果也一樣（按了才再查，不會自動重查） */
-        $(row).hidden=false;
-      }
-    }catch(e){setErr(e)}
-    activeBtn.textContent=label; setBusy(false);
-  }
-  $(btn).onclick=()=>{ if(!$(kw).value.trim()||$(btn).disabled)return; run(false) };
-  $(liveBtn).onclick=()=>{ if(!lastSearch||$(liveBtn).disabled)return; run(true) };
+/* 搜尋站名（上車站、下車站各一組）：搜尋的狀態（結果、按鈕、上一次的關鍵字與生活圈）全部在站名搜尋 module（stops.js）；這裡只依它交出的資料畫選單與按鈕 */
+const SEARCH_SIDES=['From','To'].map(k=>{
+  const side={kw:'kw'+k,btn:'s'+k,sel:'sel'+k,row:'live'+k,liveBtn:'liveS'+k};
+  side.search=Stops.createStopSearch({index:stopIndex,getRegion:()=>$('pRegion').value,onWait:()=>renderSearchButtons(side)});
+  return side;
+});
+/* 選單：只在結果換了（搜尋回來、作廢）時重畫，等候秒數更新不動選單，免得選到一半被重設。提示項目（value 為 null）畫成 value=""、disabled */
+function renderSearchMenu(side){
+  const st=side.search.state(), sel=$(side.sel);
+  sel.innerHTML=st?st.items.map(i=>i.value===null?`<option value="" disabled>${esc(i.text)}</option>`:i.selectable?`<option>${esc(i.text)}</option>`:`<option value="${esc(i.value)}" disabled>${esc(i.text)}</option>`).join(''):'';
+  sel.hidden=!st;
+  renderSearchButtons(side);
 }
-bindSearch('sFrom','kwFrom','selFrom','liveFrom','liveSFrom'); bindSearch('sTo','kwTo','selTo','liveTo','liveSTo');
+/* 按鈕文字、能不能按、即時搜尋那一列要不要顯示 */
+function renderSearchButtons(side){
+  const b=side.search.buttons(), st=side.search.state();
+  $(side.btn).textContent=b.general.text; $(side.btn).disabled=b.general.disabled;
+  $(side.liveBtn).textContent=b.live.text; $(side.liveBtn).disabled=b.live.disabled;
+  $(side.row).hidden=!(st&&st.liveShown);
+}
+async function runSearch(side,live){
+  const p=live?side.search.live():side.search.search($(side.kw).value);
+  renderSearchButtons(side); /* 搜尋已開始：按鈕顯示搜尋中、收起即時搜尋那一列 */
+  try{
+    const r=await p;
+    if(r) $('addStatus').textContent='';
+    renderSearchMenu(side);
+  }catch(e){setErr(e); renderSearchButtons(side)}
+}
+for(const side of SEARCH_SIDES){
+  $(side.btn).onclick=()=>{ if(!$(side.kw).value.trim()||$(side.btn).disabled)return; runSearch(side,false) };
+  $(side.liveBtn).onclick=()=>{ if($(side.liveBtn).disabled)return; runSearch(side,true) };
+}
+/* 生活圈變了（手動換、打開設定頁重設）：兩邊的搜尋全部作廢，選單與按鈕清掉，輸入框關鍵字保留；轉乘站候選與新增狀態也清掉 */
+function resetRegion(){
+  for(const side of SEARCH_SIDES){side.search.regionChanged(); renderSearchMenu(side)}
+  $('viaPick').innerHTML=''; $('addStatus').textContent='';
+}
+$('pRegion').onchange=resetRegion;
 
 $('btnAdd').onclick=async()=>{
   const r=await pm.add({name:$('pName').value,region:$('pRegion').value,

@@ -5,7 +5,7 @@
    改用 TDX（備案）時，同一生活圈＋同一關鍵字在這個 index 的生命期內只查一次；live 每次都真的查，成功才更新快取。
    站名檔是不可信資料：整檔不合格就作廢（改用 TDX），單筆不合格就略過。 */
 (function(root){
-  const VERSION='20261108n';
+  const VERSION='20261108o';
   const MAX_STOPS=30000, MAX_NAME=40, MAX_SHOWN=100;
   /* 控制字元與看不見的格式字元（Unicode Cc、Cf：零寬字元、方向控制字元、軟連字號、BOM……） */
   const BAD_CHARS=/[\p{Cc}\p{Cf}]/u;
@@ -72,8 +72,9 @@
      items：[{text, value, selectable}]；超過 100 筆最後一個是不能選的提示；0 筆是「找不到這個站名」。
      state()：目前這一批 {kw, region, items, liveShown} 的複本（一般搜尋進行中 liveShown 為 false），沒有（還沒搜尋或已作廢）回傳 null。
      buttons()：兩顆按鈕的文字與能不能按。
-     regionChanged()：生活圈變了，作廢全部。 */
-  function createStopSearch({index,getRegion}){
+     regionChanged()：生活圈變了，作廢全部。
+     onWait（選用）：排隊中等待秒數更新時通知畫面重畫按鈕文字，通知時 buttons() 已是新的秒數。 */
+  function createStopSearch({index,getRegion,onWait}){
     let batch=null, seq=0, busy=null; /* seq 每次搜尋或作廢加一，只有最新一次搜尋的結果能寫回；busy＝還沒回來的那一次 {kind:'general'|'live', waitSec}，沒有就 null */
     const LABEL={general:'搜尋',live:'用 TDX 即時搜尋'};
     const itemsOf=(names,more)=>{
@@ -89,7 +90,7 @@
       busy=job;
       let res, err=null;
       /* onWait 只在排隊時被呼叫；拿到額度後維持最後的等 N 秒直到查完（tdx 不通知額度到手，和原本畫面相同） */
-      try{ res=await index.search(q,{region,live:kind==='live',onWait:s=>{ job.waitSec=s }}); }catch(e){ err=e; }
+      try{ res=await index.search(q,{region,live:kind==='live',onWait:s=>{ job.waitSec=s; if(onWait&&busy===job) onWait(); }}); }catch(e){ err=e; }
       if(busy===job) busy=null;
       if(mine!==seq) return null;
       /* 生活圈讀法已回傳別區（沒走 regionChanged）：同樣視為作廢，舊區的上一批也不留 */
