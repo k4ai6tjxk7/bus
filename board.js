@@ -11,24 +11,26 @@
      buses       3D 光點 [{name, sec, hot}]
      hidden      已隱藏幾條路線
      stale       資料是否超過 3 分鐘
-     nextRefreshMs 多久後再查：3 分鐘內有車 30 秒、其他 60 秒、沒有即時資料 90 秒
+     nextRefreshMs 多久後再查：3 分鐘內有車 30 秒、其他 60 秒、沒有預估時間（即時或首站）90 秒
    eta = {kind:'min', n, tone} 或 {kind:'word', text, tone}，tone 是 'hot' | 'dim' | '' */
 (function(root){
   const SOON=180, ARRIVING=60, STALE_MS=3*60000;
 
-  /* 排序用：有即時分鐘數的最前面，其次未發車（依首站發車時間），最後末班已過、停駛等 */
+  /* 有預估秒數的班次：即時預估（StopStatus 0）或首站預估（StopStatus 1 且有秒數），兩者一律當成正常班次 */
+  const timed=d=>!!d&&(d.StopStatus===0||d.StopStatus===1)&&d.EstimateTime!=null;
+
+  /* 排序用：有預估秒數的（即時、首站一起）純依秒數排在最前面，其次首站沒有預估秒數的未發車（依首站發車時間），最後末班已過、停駛等 */
   function rank(d){
     if(!d) return 9e9;
-    if(d.StopStatus===0&&d.EstimateTime!=null) return d.EstimateTime;
+    if(timed(d)) return d.EstimateTime;
     if(d.StopStatus===1) return 1e6+(d.NextBusTime?Date.parse(d.NextBusTime)/1e3%1e6:5e5);
     return 2e6+(d.StopStatus||0);
   }
-  const live=d=>!!d&&d.StopStatus===0&&d.EstimateTime!=null;
   const hhmm=t=>{const x=new Date(t);return String(x.getHours()).padStart(2,'0')+':'+String(x.getMinutes()).padStart(2,'0')};
 
   function etaOf(d){
     if(!d) return {kind:'word',text:'無資料',tone:'dim'};
-    if(live(d)){
+    if(timed(d)){
       const s=d.EstimateTime;
       if(s<ARRIVING) return {kind:'word',text:'進站中',tone:'hot'};
       if(s<SOON) return {kind:'word',text:'將到站',tone:'hot'};
@@ -39,7 +41,10 @@
   }
   function subOf(r,d,to){
     const s='坐 '+r.hops+' 站到'+to;
-    return d&&d.StopStatus===1&&d.NextBusTime?'首站發車 '+hhmm(d.NextBusTime)+' · '+s:s;
+    if(!d||d.StopStatus!==1) return s;
+    /* 首站預估：車還沒發車，時間可能不準，小字要說清楚 */
+    if(timed(d)) return (d.NextBusTime?'首站 '+hhmm(d.NextBusTime)+' 發車':'首站未發車')+' · '+s;
+    return d.NextBusTime?'首站發車 '+hhmm(d.NextBusTime)+' · '+s:s;
   }
 
   /* 每條路線挑出最快的那筆，再把同名同方向的合併（雙站位時留比較快到的），最後依到站排序 */
@@ -58,7 +63,7 @@
   }
   /* 兩次查詢之間，畫面自己扣秒數 */
   function aged(d,sec){
-    return live(d)?Object.assign({},d,{EstimateTime:Math.max(0,d.EstimateTime-sec)}):d;
+    return timed(d)?Object.assign({},d,{EstimateTime:Math.max(0,d.EstimateTime-sec)}):d;
   }
 
   function boardOf(pair,rows,at,now){
@@ -73,7 +78,7 @@
 
     const all=match(routes,Array.isArray(rows)?rows:[]).map(x=>({r:x.r,d:aged(x.d,elapsed)}));
     /* 更新頻率看的是所有路線（含排除的），和以前一樣 */
-    const soonest=all.filter(x=>live(x.d)).map(x=>x.d.EstimateTime);
+    const soonest=all.filter(x=>timed(x.d)).map(x=>x.d.EstimateTime);
     base.nextRefreshMs=!soonest.length?90000:Math.min(...soonest)<=SOON?30000:60000;
 
     const shown=all.filter(x=>!exclude.includes(x.r.name));
@@ -81,7 +86,7 @@
     const to=pair.to||'';
     const view=x=>({name:x.r.name,sub:subOf(x.r,x.d,to),eta:etaOf(x.d)});
     return Object.assign(base,{state:'ok',hero:view(shown[0]),rest:shown.slice(1).map(view),
-      buses:shown.map(x=>{const sec=live(x.d)?x.d.EstimateTime:null; return {name:x.r.name,sec,hot:sec!=null&&sec<SOON}})});
+      buses:shown.map(x=>{const sec=timed(x.d)?x.d.EstimateTime:null; return {name:x.r.name,sec,hot:sec!=null&&sec<SOON}})});
   }
 
   /* 轉乘組合拆成兩段，各自當成一個組合交給 boardOf；直達組合原樣回傳
