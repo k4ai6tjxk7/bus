@@ -10,7 +10,7 @@
    - 收到 429：暫停 65 秒。把 4 筆時間戳記在「未來 4 秒」佔滿額度（舊版也讀得懂，同樣會等），
      另外在 bus.pause 記暫停到幾點，只用來顯示是哪一種等待。
    - opts.auto=true（自動更新）：這個操作的額度不夠就整個跳過，回傳 null，不和使用者搶。
-   - 使用者操作：排隊等，每秒呼叫 opts.onWait(秒數, 原因)；原因 'limit' 自己保留額度、'paused' 被 TDX 擋。
+   - 使用者操作：排隊等，每秒呼叫 opts.onWait(秒數, 原因)；原因 'limit' 自己保留額度、'paused' 被 TDX 擋；說明文字是 waitText(秒數, 原因, 接下來做什麼)。
    - opts.cancel()：排隊時每輪都問一次，回傳 true 就不等了，整個操作回傳 null（和被跳過一樣）。
 
    錯誤一律是 TdxError：e.kind 為 'nokey' | 'rate' | 'network' | 'auth' | 'http'，e.message 可直接顯示。
@@ -22,6 +22,11 @@
   const Regions=typeof module!=='undefined'&&module.exports?require('./regions.js'):root.Regions;
   const RL_MAX=4, RL_WIN=61000, PAUSE_MS=65000, FUTURE_OK=5000;
   const KEY_MAX=200;
+
+  /* 排隊等額度時的說明（onWait 的原因 limit／paused 對應的文字）：到站更新、組合管理、站名搜尋、設定頁共用。
+     then＝額度夠了之後要做什麼，只有 limit 會說（預設「送出查詢」）；paused 一律是自動重試。 */
+  const waitText=(s,why,then)=>why==='paused'?'TDX 暫時限制這組金鑰的查詢次數，約 '+s+' 秒後自動重試…'
+    :'為了不超過 TDX 每分鐘的查詢上限，約 '+s+' 秒後'+(then||'送出查詢')+'…';
 
   const q=s=>String(s).replace(/'/g,"''");
 
@@ -179,7 +184,7 @@
     };
   }
 
-  const api={createTdx,TdxError,RL_MAX,RL_WIN,PAUSE_MS};
+  const api={createTdx,TdxError,waitText,RL_MAX,RL_WIN,PAUSE_MS};
   if(typeof module!=='undefined'&&module.exports) module.exports=api;
   else root.Tdx=api;
 })(typeof window!=='undefined'?window:this);

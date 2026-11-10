@@ -20,7 +20,7 @@
    errText(錯誤)：設定頁的錯誤說法（沒金鑰時是「請先儲存金鑰。」），站名搜尋也用。 */
 (function(root){
   const node=typeof module!=='undefined'&&module.exports;
-  const {waitText}=node?require('./updater.js'):root.Updater;
+  const {waitText}=node?require('./tdx.js'):root.Tdx;
   const {PAIR_MAX}=node?require('./pairs.js'):root.PairStore;
 
   const errText=e=>e.kind==='nokey'?'請先儲存金鑰。':e.message;

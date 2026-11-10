@@ -41,6 +41,7 @@
 (function(root){
   const node=typeof module!=='undefined'&&module.exports;
   const Board=node?require('./board.js'):root.Board;
+  const {waitText}=node?require('./tdx.js'):root.Tdx; /* 排隊說明文字 Tdx.waitText */
   const IDLE_MS=10*60000, REOPEN_MS=30*60000, BACK_STALE_MS=20000, KEEP_MS=3*60000;
   const TEXT={
     loading:'載入中…',
@@ -50,9 +51,6 @@
     noRoutes:'請到設定確認站名，或按「重找路線」。',
     rateTail:'畫面是最後一次的資料。'
   };
-  /* 排隊等額度時的提示：limit 自己保留額度、paused 被 TDX 擋（設定頁也用） */
-  const waitText=(s,why,then)=>why==='paused'?'TDX 暫時限制這組金鑰的查詢次數，約 '+s+' 秒後自動重試…'
-    :'為了不超過 TDX 每分鐘的查詢上限，約 '+s+' 秒後'+(then||'送出查詢')+'…';
   /* 到站資料是查哪些站牌：同縣市同站牌只算一次，順序不影響 */
   function keyOf(p){
     const rs=p.via?(p.routes||[]).concat(p.routes2||[]):(p.routes||[]);
@@ -233,7 +231,7 @@
     };
   }
 
-  const api={createUpdater,waitText,IDLE_MS,REOPEN_MS};
+  const api={createUpdater,IDLE_MS,REOPEN_MS};
   if(node) module.exports=api;
   else root.Updater=api;
 })(typeof window!=='undefined'?window:this);

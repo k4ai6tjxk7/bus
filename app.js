@@ -32,7 +32,7 @@ const stopIndex=Stops.createStopIndex({tdx,load:async region=>{
 const updater=Updater.createUpdater({store,finder,tdx,onChange:v=>render(v)});
 
 const esc=Board.esc;
-const waitText=Updater.waitText;
+const waitText=Tdx.waitText;
 
 function curPair(){return store.current()}
 /* 轉乘組合目前看第幾段（1 或 2），由到站更新決定；換組合、重新打開 App 都回到第一段 */
@@ -323,7 +323,7 @@ renderRegions();
 const SEARCH_SIDES=['From','To'].map(k=>{
   const side={kw:'kw'+k,btn:'s'+k,sel:'sel'+k,row:'live'+k,liveBtn:'liveS'+k,queueStarted:false};
   /* 排隊時按鈕顯示等 N 秒，狀態列由 renderWaitNote 依 module 的說明畫 */
-  side.search=Stops.createStopSearch({index:stopIndex,getRegion:()=>$('pRegion').value,waitText,onWait:()=>{
+  side.search=Stops.createStopSearch({index:stopIndex,getRegion:()=>$('pRegion').value,onWait:()=>{
     renderSearchButtons(side); renderWaitNote(side.queueStarted); side.queueStarted=false;
   }});
   return side;

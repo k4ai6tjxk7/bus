@@ -5,6 +5,7 @@
    改用 TDX（備案）時，同一生活圈＋同一關鍵字在這個 index 的生命期內只查一次；live 每次都真的查，成功才更新快取。
    站名檔是不可信資料：整檔不合格就作廢（改用 TDX），單筆不合格就略過。 */
 (function(root){
+  const Tdx=typeof module!=='undefined'&&module.exports?require('./tdx.js'):root.Tdx; /* 排隊說明文字 Tdx.waitText */
   /* 資料版本號：只有站名檔內容變了才換，只用在 stops/<生活圈>.json?v=（手機據此決定要不要重抓站名檔）。
      stops.js 自己的 ?v= 和其他 js 一樣寫在 index.html，跟程式內容走。 */
   const DATA_VERSION='20261108u';
@@ -76,8 +77,8 @@
      buttons()：兩顆按鈕的文字與能不能按。
      regionChanged()：生活圈變了，作廢全部。
      onWait（選用）：排隊中等待秒數更新時通知畫面重畫按鈕文字，通知時 buttons() 已是新的秒數。
-     waitText（選用，注入）：到站更新的排隊說明 waitText(秒數, 原因, '搜尋')；waitNote() 回傳它的結果，沒有排隊、沒注入回傳 ''。 */
-  function createStopSearch({index,getRegion,onWait,waitText}){
+     waitNote()：排隊中回傳 Tdx.waitText(秒數, 原因, '搜尋') 的說明，沒有排隊回傳 ''。 */
+  function createStopSearch({index,getRegion,onWait}){
     let batch=null, seq=0, busy=null; /* seq 每次搜尋或作廢加一，只有最新一次搜尋的結果能寫回；busy＝還沒回來的那一次 {kind:'general'|'live', waitSec}，沒有就 null */
     const LABEL={general:'搜尋',live:'用 TDX 即時搜尋'};
     const itemsOf=(names,more)=>{
@@ -119,8 +120,8 @@
         return runSearch('live',batch.kw,batch.region);
       },
       state,
-      /* 排隊時的狀態列說明（和組合管理同一套說法）；沒有排隊、或沒注入 waitText 回傳 '' */
-      waitNote(){ return busy&&busy.waitSec!=null&&waitText?waitText(busy.waitSec,busy.why,'搜尋'):''; },
+      /* 排隊時的狀態列說明（和組合管理同一套說法）；沒有排隊回傳 '' */
+      waitNote(){ return busy&&busy.waitSec!=null?Tdx.waitText(busy.waitSec,busy.why,'搜尋'):''; },
       /* 按鈕的文字與能不能按：有查詢在跑時兩個都不能按，正在用的那顆顯示「搜尋中」，排隊時「等 N 秒」；結束（含出錯）回原文字 */
       buttons(){
         const label=kind=>busy&&busy.kind===kind?(busy.waitSec!=null?`等 ${busy.waitSec} 秒`:'搜尋中'):LABEL[kind];
