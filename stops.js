@@ -1,11 +1,13 @@
 'use strict';
 /* 站名檔 module：從本機站名檔搜尋站名（GLOSSARY「站名檔」）。
    Stops.createStopIndex({load, tdx}).search(關鍵字, {region, onWait, live}) 回傳 {names, more, source}。
-   load(生活圈 id) 回傳解析後的站名檔（App 用 fetch 加 ?v=VERSION）；tdx 只用 searchStops。
+   load(生活圈 id) 回傳解析後的站名檔（App 用 fetch 加 ?v=DATA_VERSION）；tdx 只用 searchStops。
    改用 TDX（備案）時，同一生活圈＋同一關鍵字在這個 index 的生命期內只查一次；live 每次都真的查，成功才更新快取。
    站名檔是不可信資料：整檔不合格就作廢（改用 TDX），單筆不合格就略過。 */
 (function(root){
-  const VERSION='20261108u';
+  /* 資料版本號：只有站名檔內容變了才換，只用在 stops/<生活圈>.json?v=（手機據此決定要不要重抓站名檔）。
+     stops.js 自己的 ?v= 和其他 js 一樣寫在 index.html，跟程式內容走。 */
+  const DATA_VERSION='20261108u';
   const MAX_STOPS=30000, MAX_NAME=40, MAX_SHOWN=100;
   /* 控制字元與看不見的格式字元（Unicode Cc、Cf：零寬字元、方向控制字元、軟連字號、BOM……） */
   const BAD_CHARS=/[\p{Cc}\p{Cf}]/u;
@@ -132,7 +134,7 @@
     };
   }
 
-  const api={VERSION,createStopIndex,createStopSearch};
+  const api={DATA_VERSION,createStopIndex,createStopSearch};
   if(typeof module!=='undefined'&&module.exports) module.exports=api;
   else root.Stops=api;
 })(typeof window!=='undefined'?window:this);

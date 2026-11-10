@@ -24,7 +24,7 @@ const tdx=Tdx.createTdx({fetch:(u,o)=>fetch(u,o),storage:LS_ADAPTER});
 const finder=Routes.createFinder({routesThrough:(k,o)=>tdx.routesThrough(k,o)});
 /* 站名檔：搜尋走本機站名檔，載入失敗時站名檔 module 自動改用 TDX */
 const stopIndex=Stops.createStopIndex({tdx,load:async region=>{
-  const res=await fetch('stops/'+encodeURIComponent(region)+'.json?v='+Stops.VERSION);
+  const res=await fetch('stops/'+encodeURIComponent(region)+'.json?v='+Stops.DATA_VERSION);
   if(!res.ok) throw new Error('stops '+res.status);
   return res.json();
 }});
