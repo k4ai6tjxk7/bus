@@ -22,6 +22,8 @@
   const Regions=typeof module!=='undefined'&&module.exports?require('./regions.js'):root.Regions;
   const RL_MAX=4, RL_WIN=61000, PAUSE_MS=65000, FUTURE_OK=5000;
   const KEY_MAX=200;
+  /* 到站資料每個縣市最多留的筆數：TDX 回應不可信，超過就丟掉，避免畫面與記憶體被撐爆（正常一縣市遠少於這個數） */
+  const ARRIVALS_MAX=5000;
 
   /* 排隊等額度時的說明（onWait 的原因 limit／paused 對應的文字）：到站更新、組合管理、站名搜尋、設定頁共用。
      then＝額度夠了之後要做什麼，只有 limit 會說（預設「送出查詢」）；paused 一律是自動重試。 */
@@ -176,7 +178,7 @@
             const f=[...byCity[city]].map(u=>`StopUID eq '${q(u)}'`).join(' or ');
             const data=await get('/EstimatedTimeOfArrival/City/'+city,{$filter:f,
               $select:'StopUID,RouteUID,Direction,StopStatus,EstimateTime,NextBusTime'},o);
-            data.forEach(d=>{if(d&&typeof d==='object') rows.push(Object.assign(d,{_city:city}))});
+            data.slice(0,ARRIVALS_MAX).forEach(d=>{if(d&&typeof d==='object') rows.push(Object.assign(d,{_city:city}))});
           }
           return rows;
         });
