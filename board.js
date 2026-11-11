@@ -8,7 +8,7 @@
      state       'ok' 有車 | 'noBus' 目前沒有車 | 'allExcluded' 可搭的路線都已排除 | 'noRoutes' 找不到路線
      hero        第一班 {name, sub, eta}；沒有就是 null
      rest        其他路線，同樣格式
-     buses       3D 光點 [{name, sec, hot}]
+     buses       3D 光點 [{key, name, sec, hot}]；key 是認車用的鍵（路線名稱＋方向，和 match 合併班次同一個依據），同一班前後兩次更新相同、清單裡任兩班不同
      hidden      已隱藏幾條路線
      stale       資料是否超過 3 分鐘
      nextRefreshMs 多久後再查：3 分鐘內有車 30 秒、其他 60 秒、沒有預估時間（即時或首站）90 秒
@@ -63,6 +63,9 @@
     return t!==null?'首站發車 '+hhmm(t)+' · '+s:s;
   }
 
+  /* 班次的鍵：路線名稱＋方向。match 合併同名同方向用它，3D 場景認車（沿用舊車）也用它 */
+  const busKey=r=>r.name+'|'+r.dir;
+
   /* 每條路線挑出最快的那筆，再把同名同方向的合併（雙站位時留比較快到的），最後依到站排序 */
   function match(routes,rows){
     const items=routes.map(r=>{
@@ -72,7 +75,7 @@
     });
     const byKey=new Map();
     for(const x of items){
-      const k=x.r.name+'|'+x.r.dir, old=byKey.get(k);
+      const k=busKey(x.r), old=byKey.get(k);
       if(!old||rank(x.d)<rank(old.d)) byKey.set(k,x);
     }
     return [...byKey.values()].sort((a,b)=>rank(a.d)-rank(b.d));
@@ -102,7 +105,7 @@
     const to=pair.to||'';
     const view=x=>({name:x.r.name,sub:subOf(x.r,x.d,to),eta:etaOf(x.d)});
     return Object.assign(base,{state:'ok',hero:view(shown[0]),rest:shown.slice(1).map(view),
-      buses:shown.map(x=>{const sec=timed(x.d)?x.d.EstimateTime:null; return {name:x.r.name,sec,hot:sec!=null&&sec<SOON}})});
+      buses:shown.map(x=>{const sec=timed(x.d)?x.d.EstimateTime:null; return {key:busKey(x.r),name:x.r.name,sec,hot:sec!=null&&sec<SOON}})});
   }
 
   /* 轉乘組合拆成兩段，各自當成一個組合交給 boardOf；直達組合原樣回傳

@@ -149,11 +149,11 @@
         }
         function setBuses(list,at){
           const next=list.filter(b=>b.sec!=null).slice(0,6).map(b=>{
-            let o=buses.find(x=>x.name===b.name);
+            let o=buses.find(x=>x.id===Scene.busId(b));
             if(!o){
               const obj=sty.makeBus(); scene.add(obj.g);
               const tag=document.createElement('div'); tag.className='tag'; tag.textContent=b.name; tagsEl.appendChild(tag);
-              o={name:b.name,obj,tag,t:Math.max(0,Scene.tOf(b.sec)-.2)};
+              o={id:Scene.busId(b),name:b.name,obj,tag,t:Math.max(0,Scene.tOf(b.sec)-.2)};
             }
             o.sec=b.sec; o.at=at; o.hot=b.hot; o.obj.setHot(b.hot); o.tag.classList.toggle('is-hot',b.hot);
             return o;

@@ -9,7 +9,7 @@
      reduce   是否開啟「減少動態效果」：只在資料變動時畫一格，不跑動畫
      style    畫面風格 id；沒有註冊過的風格一律畫原版
      theme    深淺色（theme.js 的 Theme.page）：isDark() 給畫法看，onChange 時叫畫法的 recolor；沒給就是淺色、不會切換
-     list     [{name, sec, hot}]（Board.boardOf 的 buses）
+     list     [{key, name, sec, hot}]（Board.boardOf 的 buses）；key 是認車用的鍵（同名不同方向各畫一台），沒有 key 的班次用 name 認車
      dispose  換風格時收掉這個場景：停止動畫、移除 canvas 與標籤
 
    register(id, factory)：其他畫面風格的檔案載入時用它登記自己的畫法，
@@ -27,6 +27,8 @@
     if(state==='none') return {arm:ARM_DOWN,look:(t%7<2.4)?-0.9:0};
     return {arm:(t%5)<1.5?2.6+Math.sin(t*11)*.38:ARM_DOWN,look:0};
   }
+  /* 認車用的鍵：Board 給的 key（路線名稱＋方向）；沒給就用路線名稱 */
+  const busId=b=>b.key!==undefined?b.key:b.name;
   const NONE={setBuses(){},dispose(){}};
   const LIGHT={isDark:()=>false,onChange:()=>()=>{}};
   const FACTORIES={};
@@ -96,12 +98,12 @@
     function setBuses(list){
       const now=performance.now();
       const next=list.filter(b=>b.sec!=null).slice(0,6).map(b=>{
-        const old=buses.find(o=>o.name===b.name);
+        const old=buses.find(o=>o.id===busId(b));
         let sp=old&&old.sprite, tag=old&&old.tag;
         if(!sp){sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending})); scene.add(sp)}
         if(!tag){tag=document.createElement('div'); tag.className='tag'; tagsEl.appendChild(tag)}
         tag.textContent=b.name; tag.classList.toggle('is-hot',b.hot);
-        return {name:b.name,sec:b.sec,hot:b.hot,at:now,t:old?old.t:Math.max(0,tOf(b.sec)-0.2),sprite:sp,tag};
+        return {id:busId(b),name:b.name,sec:b.sec,hot:b.hot,at:now,t:old?old.t:Math.max(0,tOf(b.sec)-0.2),sprite:sp,tag};
       });
       buses.forEach(o=>{if(!next.some(n=>n.sprite===o.sprite)){scene.remove(o.sprite); o.tag.remove()}});
       buses=next; colors();
@@ -154,7 +156,7 @@
     return {setBuses,dispose,recolor:colors};
   });
 
-  const api={createScene,register,tOf,T_MAX,wave};
+  const api={createScene,register,tOf,T_MAX,wave,busId};
   if(typeof module!=='undefined'&&module.exports) module.exports=api;
   else root.Scene=api;
 })(typeof window!=='undefined'?window:this);
