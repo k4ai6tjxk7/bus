@@ -151,7 +151,7 @@ function openSettings(on,focusId){
   $('board').hidden=on; $('settings').hidden=!on; closeMenu();
   if(on) updater.setActive(false);
   if(on){
-    const k=tdx.key(); $('cid').value=k.id; $('csec').value=k.secret; renderPairs(); renderUsage(); renderStyles(); renderTheme(); renderRegions(); resetRegion();
+    const k=tdx.key(); $('cid').value=k.id; $('csec').value=k.secret; renderPairs(); renderUsage(); renderStyles(); renderTheme(); form.open();
     const f=focusId&&$(focusId);
     if(f){f.scrollIntoView({block:'center'}); f.focus({preventScroll:true})} else window.scrollTo(0,0);
   } else {renderChips(); updater.setActive(true); resumeView()}
@@ -207,9 +207,6 @@ $('btnSaveKey').onclick=async()=>{
     $('keyStatus').textContent='✓ 金鑰可以用了';
   }catch(e){$('keyStatus').textContent=e.kind==='nokey'?'請填入兩個欄位。':e.message}
 };
-/* 設定頁的組合操作（新增、重找、換轉乘站、刪除）的規則與提示文字都在組合管理（manage.js）；這裡只畫、綁按鈕 */
-const pm=Manage.createPairManager({store,finder,usage,onStatus:t=>{$('addStatus').textContent=t}});
-const setErr=e=>{$('addStatus').textContent=Manage.errText(e)};
 
 const regionName=id=>Regions.get(id).name;
 function chips(p,leg2){
@@ -266,20 +263,20 @@ $('pairList').addEventListener('click',async e=>{
   if(b.dataset.act==='keep'){store.dismissDirect(p.id); keepScroll(); return}
   if(b.dataset.act==='del'){
     if(b.dataset.confirm!=='1'){b.dataset.confirm='1'; b.textContent='確定刪除'; return}
-    pm.remove(p.id);
+    form.manager.remove(p.id);
     renderPairs(); renderUsage();
   }else if(b.dataset.act==='via'){
     b.textContent='尋找中…';
-    const r=await pm.transfers(p.id);
+    const r=await form.manager.transfers(p.id);
     renderPairs();
     const el=$('vp-'+p.id); if(!el) return;
     if(r.none){el.innerHTML=`<div class="note">${esc(r.none)}</div>`; return}
     if(!r.pick) return;
-    renderPicker(el,r.pick,c=>{pm.chooseVia(p.id,c); renderPairs()});
+    renderPicker(el,r.pick,c=>{form.manager.chooseVia(p.id,c); renderPairs()});
     el.scrollIntoView({block:'nearest'});
   }else{
     b.textContent='尋找中…';
-    await pm.refind(p.id);
+    await form.manager.refind(p.id);
     renderPairs();
   }
 });
@@ -313,76 +310,47 @@ function renderTheme(){
 $('themeSeg').onclick=e=>{const b=e.target.closest('button[data-mode]'); if(b&&Theme.page.set(b.dataset.mode)) renderTheme()};
 Theme.page.onChange(renderTheme);
 
-/* 生活圈：預設用最後新增那組的生活圈；換生活圈時站名要重新搜尋 */
-function renderRegions(){
-  const list=store.list(), def=list.length?list[list.length-1].region:Regions.DEFAULT;
-  $('pRegion').innerHTML=Regions.LIST.map(r=>`<option value="${r.id}"${r.id===def?' selected':''}>${esc(r.name)}${r.note?'（'+esc(r.note)+'）':''}</option>`).join('');
-}
-renderRegions();
-/* 搜尋站名（上車站、下車站各一組）：搜尋的狀態（結果、按鈕、上一次的關鍵字與生活圈）全部在站名搜尋 module（stops.js）；這裡只依它交出的資料畫選單與按鈕 */
-const SEARCH_SIDES=['From','To'].map(k=>{
-  const side={kw:'kw'+k,btn:'s'+k,sel:'sel'+k,row:'live'+k,liveBtn:'liveS'+k,queueStarted:false};
-  /* 排隊時按鈕顯示等 N 秒，狀態列由 renderWaitNote 依 module 的說明畫 */
-  side.search=Stops.createStopSearch({index:stopIndex,getRegion:()=>$('pRegion').value,onWait:()=>{
-    renderSearchButtons(side); renderWaitNote(side.queueStarted); side.queueStarted=false;
-  }});
-  return side;
-});
-/* 狀態列的排隊說明只有這一個出口：取第一個有排隊說明的那側（module 交出的 waitNote），都沒有就清掉自己寫的說明。
-   shownNote＝上一次這裡寫進狀態列的字。queueStarted＝這次是新開始的排隊，不論狀態列現在是什麼都寫；其餘時候（倒數、結束）只在狀態列還是自己寫的字時才動，免得把錯誤訊息蓋掉 */
-let shownNote='';
-function renderWaitNote(queueStarted){
-  const st=$('addStatus');
-  const note=SEARCH_SIDES.map(s=>s.search.waitNote()).find(t=>t)||'';
-  if(note){
-    if(queueStarted||st.textContent===shownNote) st.textContent=note;
-    shownNote=note;
-  }else{
-    if(st.textContent===shownNote) st.textContent='';
-    shownNote='';
+/* 新增組合區（生活圈、兩個站名搜尋、狀態列、轉乘站候選）：狀態與規則都在新增組合表單（manage.js 的 createAddForm）；這裡只依 form.view() 畫、把點擊與改選轉交給它。
+   組合清單的重找、換轉乘站、刪除用表單交出的 manager，提示文字出現在同一條狀態列 */
+const form=Manage.createAddForm({store,finder,usage,onChange:()=>renderAdd(),
+  createSearch:({getRegion,onWait})=>Stops.createStopSearch({index:stopIndex,getRegion,onWait})});
+const ADD_SIDES=[['from','From'],['to','To']].map(([side,k])=>({side,kw:'kw'+k,btn:'s'+k,sel:'sel'+k,row:'live'+k,liveBtn:'liveS'+k,rev:-1}));  /* rev＝畫出來的 menuRev；-1 表示還沒畫過 */
+let drawnCands=null; /* 畫出來的轉乘站候選陣列；view().pick 每次是新物件，以 cands 是否同一份判斷有沒有換 */
+/* 只在選單的 menuRev 變了才重畫（等候秒數、按鈕文字更新不動選單，免得選到一半被重設）；轉乘站候選只在換了一份才重畫。提示項目（value 為 null）畫成 value=""、disabled */
+function renderAdd(){
+  const v=form.view();
+  $('pRegion').value=v.region;
+  $('addStatus').textContent=v.status;
+  for(const s of ADD_SIDES){
+    const sv=v[s.side], sel=$(s.sel);
+    if(sv.menuRev!==s.rev){
+      s.rev=sv.menuRev;
+      sel.innerHTML=sv.menu?sv.menu.map(i=>i.value===null?`<option value="" disabled>${esc(i.text)}</option>`:`<option>${esc(i.text)}</option>`).join(''):'';
+      sel.hidden=!sv.menu;
+      if(sv.chosen) sel.value=sv.chosen;
+    }
+    $(s.btn).textContent=sv.buttons.general.text; $(s.btn).disabled=sv.buttons.general.disabled;
+    $(s.liveBtn).textContent=sv.buttons.live.text; $(s.liveBtn).disabled=sv.buttons.live.disabled;
+    $(s.row).hidden=!sv.liveShown;
+  }
+  const cands=v.pick?v.pick.cands:null;
+  if(cands!==drawnCands){
+    drawnCands=cands;
+    if(v.pick) renderPicker($('viaPick'),v.pick,c=>{ if(form.pickVia(c).changed) renderPairs() });
+    else $('viaPick').innerHTML='';
   }
 }
-/* 選單：只在結果換了（搜尋回來、作廢）時重畫，等候秒數更新不動選單，免得選到一半被重設。提示項目（value 為 null）畫成 value=""、disabled */
-function renderSearchMenu(side){
-  const st=side.search.state(), sel=$(side.sel);
-  sel.innerHTML=st?st.items.map(i=>i.value===null?`<option value="" disabled>${esc(i.text)}</option>`:`<option>${esc(i.text)}</option>`).join(''):'';
-  sel.hidden=!st;
-  renderSearchButtons(side);
+$('pRegion').innerHTML=Regions.LIST.map(r=>`<option value="${r.id}">${esc(r.name)}${r.note?'（'+esc(r.note)+'）':''}</option>`).join('');
+renderAdd();
+$('pRegion').onchange=()=>form.setRegion($('pRegion').value);
+for(const s of ADD_SIDES){
+  $(s.btn).onclick=()=>form.search(s.side,$(s.kw).value);
+  $(s.liveBtn).onclick=()=>form.live(s.side);
+  $(s.sel).onchange=()=>form.choose(s.side,$(s.sel).value);
 }
-/* 按鈕文字、能不能按、即時搜尋那一列要不要顯示 */
-function renderSearchButtons(side){
-  const b=side.search.buttons(), st=side.search.state();
-  $(side.btn).textContent=b.general.text; $(side.btn).disabled=b.general.disabled;
-  $(side.liveBtn).textContent=b.live.text; $(side.liveBtn).disabled=b.live.disabled;
-  $(side.row).hidden=!(st&&st.liveShown);
-}
-async function runSearch(side,live){
-  side.queueStarted=true;
-  const p=live?side.search.live():side.search.search($(side.kw).value);
-  renderSearchButtons(side); /* 搜尋已開始：按鈕顯示搜尋中、收起即時搜尋那一列 */
-  try{
-    const r=await p;
-    renderWaitNote(false); /* 結束（含作廢）：清掉自己寫的排隊說明；另一側還在排隊就改顯示它的 */
-    renderSearchMenu(side);
-  }catch(e){ setErr(e); renderSearchButtons(side) } /* 出錯：錯誤訊息保留，不呼叫 renderWaitNote */
-}
-for(const side of SEARCH_SIDES){
-  $(side.btn).onclick=()=>{ if(!$(side.kw).value.trim()||$(side.btn).disabled)return; runSearch(side,false) };
-  $(side.liveBtn).onclick=()=>{ if($(side.liveBtn).disabled)return; runSearch(side,true) };
-}
-/* 生活圈變了（手動換、打開設定頁重設）：兩邊的搜尋全部作廢，選單與按鈕清掉，輸入框關鍵字保留；轉乘站候選與新增狀態也清掉 */
-function resetRegion(){
-  for(const side of SEARCH_SIDES){side.search.regionChanged(); renderSearchMenu(side)}
-  $('viaPick').innerHTML=''; $('addStatus').textContent=''; shownNote='';
-}
-$('pRegion').onchange=resetRegion;
-
 $('btnAdd').onclick=async()=>{
-  const r=await pm.add({name:$('pName').value,region:$('pRegion').value,
-    from:$('selFrom').hidden?'':$('selFrom').value,to:$('selTo').hidden?'':$('selTo').value},()=>{$('viaPick').innerHTML=''});
+  const r=await form.add($('pName').value);
   if(r.changed) renderPairs();
-  /* 沒有直達：列出轉乘站，選了才新增 */
-  if(r.pick) renderPicker($('viaPick'),r.pick,c=>{if(pm.addWithVia(r.pick.input,c).changed) renderPairs()});
 };
 
 /* ---------- 啟動 ---------- */
