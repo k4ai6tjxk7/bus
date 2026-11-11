@@ -62,11 +62,11 @@ function renderChips(){
   renderHidden();
   $('pairWhy').textContent=w; $('pairWhy').hidden=!w; $('pairWhy').classList.toggle('tip',tip);
   $('pairMenu').innerHTML=list.map(x=>{const on=p&&x.id===p.id;
-    return `<button type="button" data-id="${esc(x.id)}" aria-current="${on}"><span class="mi"><span class="mn">${esc(x.name)}</span><span class="ms">${esc(stopsText(x))}</span></span>${on?CHECK:''}</button>`}).join('')
+    return `<button type="button" data-id="${esc(x.id)}" aria-current="${esc(on)}"><span class="mi"><span class="mn">${esc(x.name)}</span><span class="ms">${esc(stopsText(x))}</span></span>${on?CHECK:''}</button>`}).join('')
     +'<button type="button" class="manage" data-act="manage">新增或管理組合</button>';
   const v=viewPair();
   $('boardTitle').textContent=!p?'下一班進站':(p.via?(leg===2?'第二段・':'第一段・'):'')+Routes.stopCore(v.from)+' 下一班進站';
-  const stop=(cls,lbl,name)=>`<div class="dot ${cls}"></div><div class="${cls==='past'?'past':''}"><div class="lbl">${lbl}</div><div class="stop">${esc(name)}</div></div>`;
+  const stop=(cls,lbl,name)=>`<div class="dot ${esc(cls)}"></div><div class="${cls==='past'?'past':''}"><div class="lbl">${esc(lbl)}</div><div class="stop">${esc(name)}</div></div>`;
   $('trip').innerHTML=!p?'':!p.via?`${stop('','上車',p.from)}<div class="rail"></div><div></div>${stop('end','下車',p.to)}`
     :leg===2?`${stop('past','上車（已搭過）',p.from)}<div class="rail off"></div><div></div>${stop('via','現在在這裡轉乘',p.via)}<div class="rail"></div><div></div>${stop('end','下車',p.to)}`
     :`${stop('','上車',p.from)}<div class="rail"></div><div></div>${stop('via','轉乘',p.via)}<div class="rail off"></div><div></div>${stop('end','下車',p.to)}`;
@@ -107,15 +107,15 @@ function routeNames(p){return p&&Array.isArray(p.routes)?[...new Set(p.routes.ma
 function hiddenCount(p){const ex=exOf(p); return routeNames(p).filter(n=>ex.includes(n)).length}
 function renderHidden(){
   const n=hiddenCount(viewPair()), el=$('hidNote');
-  el.hidden=!n; el.textContent=n?`已隱藏 ${n} 條路線 · 修改`:'';
+  el.hidden=!n; el.textContent=n?`已隱藏 ${esc(n)} 條路線 · 修改`:'';
 }
 $('hidNote').addEventListener('click',()=>{const p=curPair(); if(p) openSettings(true,(p.via&&updater.leg()===2?'ex2-':'ex-')+p.id)});
 
 /* 把看板內容畫出來；所有文字都在這裡跳脫。scene=true 才把班次交給 3D 場景（載入中、錯誤時維持原樣） */
 const EMPTY_TEXT={noBus:'目前沒有車',allExcluded:'可搭的路線都已排除',noRoutes:'找不到同時經過這兩站的路線'};
 function etaHtml(e,cls,hero){
-  return e.kind==='min'?`<div class="${cls}"><span class="n">${e.n}</span><span class="u">分</span></div>`
-    :`<div class="${cls} word ${e.tone}${hero&&e.tone==='hot'?' blink':''}">${esc(e.text)}</div>`;
+  return e.kind==='min'?`<div class="${esc(cls)}"><span class="n">${esc(e.n)}</span><span class="u">分</span></div>`
+    :`<div class="${esc(cls)} word ${esc(e.tone)}${hero&&e.tone==='hot'?' blink':''}">${esc(e.text)}</div>`;
 }
 function renderBoard(b,scene){
   renderHidden();
@@ -181,8 +181,8 @@ function renderGuide(hasKey,hasPair){
   g.innerHTML=`<h2>三步驟開始使用</h2>
     <p class="lead">設定一次就好，之後打開就直接看到哪幾班車能到。</p>
     <ol class="steps">
-      <li class="step ${st(1)}"><span class="num">${hasKey?'✓':'1'}</span><span class="step-t">申請 TDX 金鑰</span>${s1}</li>
-      <li class="step ${st(2)}"><span class="num">${hasPair?'✓':'2'}</span><span class="step-t">新增上下車站</span>${s2}</li>
+      <li class="step ${esc(st(1))}"><span class="num">${hasKey?'✓':'1'}</span><span class="step-t">申請 TDX 金鑰</span>${s1}</li>
+      <li class="step ${esc(st(2))}"><span class="num">${hasPair?'✓':'2'}</span><span class="step-t">新增上下車站</span>${s2}</li>
       <li class="step"><span class="num">3</span><span class="step-t">看即時到站</span></li>
     </ol>
     <div class="hint">小技巧：用 Safari 打開，點<b>分享</b> →<b>加入主畫面</b>，就能像 App 一樣一鍵打開。</div><div class="hint src">${SOURCE_HTML}</div>`;
@@ -211,7 +211,7 @@ $('btnSaveKey').onclick=async()=>{
 const regionName=id=>Regions.get(id).name;
 function chips(p,leg2){
   const names=routeNames(leg2?Board.legOf(p,2):p), ex=leg2?p.exclude2:p.exclude;
-  return `<div class="xchips">${names.map(n=>`<button type="button" class="xchip" data-act="ex" data-leg="${leg2?2:1}" data-id="${esc(p.id)}" data-n="${esc(n)}" aria-pressed="${ex.includes(n)}">${esc(n)}</button>`).join('')}</div>`;
+  return `<div class="xchips">${names.map(n=>`<button type="button" class="xchip" data-act="ex" data-leg="${esc(leg2?2:1)}" data-id="${esc(p.id)}" data-n="${esc(n)}" aria-pressed="${esc(ex.includes(n))}">${esc(n)}</button>`).join('')}</div>`;
 }
 function renderPairs(){
   const list=store.list();
@@ -221,19 +221,19 @@ function renderPairs(){
     const n1=routeNames(p).length, n2=p.via?routeNames(Board.legOf(p,2)).length:0;
     const tags=(manyRegions?`<span class="ptag">${esc(regionName(p.region))}</span>`:'')+(p.via?'<span class="ptag tr">轉乘</span>':'');
     const hid=hiddenCount(p)+(p.via?hiddenCount(Board.legOf(p,2)):0);
-    const info=p.via?`${esc(stopsText(p))}${p.routes?` · 第一段 ${n1} 條、第二段 ${n2} 條`:''}`
-      :`${esc(stopsText(p))}${p.routes?` · ${n1} 條路線`:''}`;
+    const info=p.via?`${esc(stopsText(p))}${p.routes?` · 第一段 ${esc(n1)} 條、第二段 ${esc(n2)} 條`:''}`
+      :`${esc(stopsText(p))}${p.routes?` · ${esc(n1)} 條路線`:''}`;
     let exw='';
     if(p.via&&(n1||n2)) exw=`<div class="exw" id="ex-${esc(p.id)}" tabindex="-1"><div class="small">不搭的路線：點一下排除，看板上就不會顯示（只影響這一組）</div>
       ${n1?`<div class="legt">第一段・${esc(p.from)} → ${esc(p.via)}</div>${chips(p,false)}`:''}
       <div id="ex2-${esc(p.id)}" tabindex="-1" style="display:flex;flex-direction:column;gap:8px">${n2?`<div class="legt">第二段・${esc(p.via)} → ${esc(p.to)}</div>${chips(p,true)}`:''}</div></div>`;
     else if(n1) exw=`<div class="exw" id="ex-${esc(p.id)}" tabindex="-1"><div class="small">不搭的路線：點一下排除，看板上就不會顯示（只影響這一組）</div>${chips(p,false)}</div>`;
-    const ask=p.via&&p.direct?`<div class="exw"><div class="ask"><span>現在有直達車了（${new Set(p.direct.map(r=>r.name)).size} 條），要改成直達嗎？</span>
+    const ask=p.via&&p.direct?`<div class="exw"><div class="ask"><span>現在有直達車了（${esc(new Set(p.direct.map(r=>r.name)).size)} 條），要改成直達嗎？</span>
       <span class="btns"><button class="btn primary" type="button" data-act="direct" data-id="${esc(p.id)}">改成直達</button><button class="btn ghost" type="button" data-act="keep" data-id="${esc(p.id)}">維持轉乘</button></span></div></div>`:'';
     /* 轉乘組合可換轉乘站；直達組合找不到路線時可找轉乘站 */
     const viaBtn=p.via?'換轉乘站':(p.routes&&!p.routes.length?'找轉乘站':'');
-    return `<div class="pair"><div><b>${esc(p.name)}</b>${tags}<div class="small">${info}${hid?`，已排除 ${hid} 條`:''}</div></div>
-    <div class="btns"><button class="btn" type="button" data-act="re" data-id="${esc(p.id)}">重找路線</button>${viaBtn?`<button class="btn" type="button" data-act="via" data-id="${esc(p.id)}">${viaBtn}</button>`:''}<button class="btn danger" type="button" data-act="del" data-id="${esc(p.id)}">刪除</button></div>${ask}${exw}
+    return `<div class="pair"><div><b>${esc(p.name)}</b>${tags}<div class="small">${info}${hid?`，已排除 ${esc(hid)} 條`:''}</div></div>
+    <div class="btns"><button class="btn" type="button" data-act="re" data-id="${esc(p.id)}">重找路線</button>${viaBtn?`<button class="btn" type="button" data-act="via" data-id="${esc(p.id)}">${esc(viaBtn)}</button>`:''}<button class="btn danger" type="button" data-act="del" data-id="${esc(p.id)}">刪除</button></div>${ask}${exw}
     <div class="exw vp" id="vp-${esc(p.id)}"></div></div>`}).join(''):'<div class="small">目前沒有組合。</div>';
 }
 /* 轉乘站候選清單：選一個再按確定。pick＝組合管理給的 {cands, lead, confirm}；onPick(候選) */
@@ -242,10 +242,10 @@ function renderPicker(el,{cands,lead,confirm},onPick){
   const nm='vp'+(++pickSeq);
   el.innerHTML=`<div class="note">${esc(lead)}</div>
     <fieldset class="cands"><legend>轉乘站（站數少的在前）</legend>
-    ${cands.map((c,i)=>`<label class="cand"><input type="radio" name="${nm}" value="${i}"${i===0?' checked':''}>
-      <span><b>${esc(c.via)}</b><small>共 ${c.hops} 站・第一段 ${c.hops1} 站／第二段 ${c.hops2} 站</small><small>第一段 ${c.n1} 條路線・第二段 ${c.n2} 條路線</small></span></label>`).join('')}</fieldset>
+    ${cands.map((c,i)=>`<label class="cand"><input type="radio" name="${esc(nm)}" value="${esc(i)}"${i===0?' checked':''}>
+      <span><b>${esc(c.via)}</b><small>共 ${esc(c.hops)} 站・第一段 ${esc(c.hops1)} 站／第二段 ${esc(c.hops2)} 站</small><small>第一段 ${esc(c.n1)} 條路線・第二段 ${esc(c.n2)} 條路線</small></span></label>`).join('')}</fieldset>
     <button class="btn primary" type="button">${esc(confirm(cands[0]))}</button>
-    <div class="small">只列出兩段站牌相距 ${Routes.MAX_DIST} 公尺內、轉一次車的轉乘站。</div>`;
+    <div class="small">只列出兩段站牌相距 ${esc(Routes.MAX_DIST)} 公尺內、轉一次車的轉乘站。</div>`;
   const btn=el.querySelector('button.primary');
   const sel=()=>cands[+(el.querySelector('input:checked')||{}).value||0];
   el.querySelectorAll('input').forEach(x=>x.onchange=()=>{btn.textContent=confirm(sel())});
@@ -283,7 +283,7 @@ $('pairList').addEventListener('click',async e=>{
 
 function renderUsage(){
   const n=usage.count();
-  $('usageStatus').textContent=n?`最近 30 天有 ${n} 筆紀錄`:'目前沒有紀錄';
+  $('usageStatus').textContent=n?`最近 30 天有 ${esc(n)} 筆紀錄`:'目前沒有紀錄';
   const b=$('btnClearUsage'); b.textContent='清除使用習慣'; b.dataset.confirm=''; b.hidden=!n;
 }
 $('btnClearUsage').onclick=()=>{
@@ -305,7 +305,7 @@ $('styleList').onchange=e=>{const id=e.target.value; if(styleSetting.set(id)) st
 const THEMES=[['auto','自動'],['light','淺色'],['dark','深色']];
 function renderTheme(){
   const cur=Theme.page.current(), now=Theme.page.systemDark()?'深色':'淺色';  /* 手機現在的設定＝選自動會是哪個 */
-  $('themeSeg').innerHTML=THEMES.map(([m,name])=>`<button class="btn" type="button" data-mode="${m}" aria-pressed="${m===cur}">${m==='auto'?`${name}（手機：${now}）`:name}</button>`).join('');
+  $('themeSeg').innerHTML=THEMES.map(([m,name])=>`<button class="btn" type="button" data-mode="${esc(m)}" aria-pressed="${esc(m===cur)}">${esc(m==='auto'?name+'（手機：'+now+'）':name)}</button>`).join('');
 }
 $('themeSeg').onclick=e=>{const b=e.target.closest('button[data-mode]'); if(b&&Theme.page.set(b.dataset.mode)) renderTheme()};
 Theme.page.onChange(renderTheme);
@@ -340,7 +340,7 @@ function renderAdd(){
     else $('viaPick').innerHTML='';
   }
 }
-$('pRegion').innerHTML=Regions.LIST.map(r=>`<option value="${r.id}">${esc(r.name)}${r.note?'（'+esc(r.note)+'）':''}</option>`).join('');
+$('pRegion').innerHTML=Regions.LIST.map(r=>`<option value="${esc(r.id)}">${esc(r.name)}${r.note?esc('（'+r.note+'）'):''}</option>`).join('');
 renderAdd();
 $('pRegion').onchange=()=>form.setRegion($('pRegion').value);
 for(const s of ADD_SIDES){
