@@ -16,14 +16,22 @@
 (function(root){
   const SOON=180, ARRIVING=60, STALE_MS=3*60000;
 
-  /* 有預估秒數的班次：即時預估（StopStatus 0）或首站預估（StopStatus 1 且有秒數），兩者一律當成正常班次 */
-  const timed=d=>!!d&&(d.StopStatus===0||d.StopStatus===1)&&d.EstimateTime!=null;
+  /* 有預估秒數的班次：即時預估（StopStatus 0）或首站預估（StopStatus 1 且有秒數），兩者一律當成正常班次。
+     秒數必須是有限數字；字串（就算是 "120"）、物件、陣列、NaN、Infinity 都當成沒有預估。判斷只寫在這一處 */
+  const timed=d=>!!d&&(d.StopStatus===0||d.StopStatus===1)&&typeof d.EstimateTime==='number'&&Number.isFinite(d.EstimateTime);
+
+  /* 發車時刻：解析成毫秒；不是字串或解析不出日期就回傳 null，當成沒有發車時刻（排序、文字、小字共用） */
+  function depMs(d){
+    if(!d||typeof d.NextBusTime!=='string') return null;
+    const ms=Date.parse(d.NextBusTime);
+    return Number.isFinite(ms)?ms:null;
+  }
 
   /* 排序用：有預估秒數的（即時、首站一起）純依秒數排在最前面，其次首站沒有預估秒數的未發車（依首站發車時間），最後末班已過、停駛等 */
   function rank(d){
     if(!d) return 9e9;
     if(timed(d)) return d.EstimateTime;
-    if(d.StopStatus===1) return 1e6+(d.NextBusTime?Date.parse(d.NextBusTime)/1e3%1e6:5e5);
+    if(d.StopStatus===1){const t=depMs(d);return 1e6+(t!==null?t/1e3%1e6:5e5);}
     return 2e6+(d.StopStatus||0);
   }
   const hhmm=t=>{const x=new Date(t);return String(x.getHours()).padStart(2,'0')+':'+String(x.getMinutes()).padStart(2,'0')};
@@ -36,15 +44,16 @@
       if(s<SOON) return {kind:'word',text:'將到站',tone:'hot'};
       return {kind:'min',n:Math.floor(s/60),tone:''};
     }
-    if(d.StopStatus===1) return d.NextBusTime?{kind:'word',text:hhmm(d.NextBusTime),tone:''}:{kind:'word',text:'未發車',tone:'dim'};
+    if(d.StopStatus===1){const t=depMs(d);return t!==null?{kind:'word',text:hhmm(t),tone:''}:{kind:'word',text:'未發車',tone:'dim'};}
     return {kind:'word',text:({2:'交管不停',3:'末班已過',4:'今日停駛'}[d.StopStatus]||'無資料'),tone:'dim'};
   }
   function subOf(r,d,to){
     const s='坐 '+r.hops+' 站到'+to;
     if(!d||d.StopStatus!==1) return s;
     /* 首站預估：車還沒發車，時間可能不準，小字要說清楚 */
-    if(timed(d)) return (d.NextBusTime?'首站 '+hhmm(d.NextBusTime)+' 發車':'首站未發車')+' · '+s;
-    return d.NextBusTime?'首站發車 '+hhmm(d.NextBusTime)+' · '+s:s;
+    const t=depMs(d);
+    if(timed(d)) return (t!==null?'首站 '+hhmm(t)+' 發車':'首站未發車')+' · '+s;
+    return t!==null?'首站發車 '+hhmm(t)+' · '+s:s;
   }
 
   /* 每條路線挑出最快的那筆，再把同名同方向的合併（雙站位時留比較快到的），最後依到站排序 */
