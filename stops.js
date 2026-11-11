@@ -13,11 +13,21 @@
   /* 控制字元與看不見的格式字元（Unicode Cc、Cf：零寬字元、方向控制字元、軟連字號、BOM……） */
   const BAD_CHARS=/[\p{Cc}\p{Cf}]/u;
 
+  /* 單筆站名是否可用（站名檔與 TDX 回傳共用，規則只寫這一份） */
+  function isUsableName(n){
+    return typeof n==='string'&&n!==''&&n.length<=MAX_NAME&&!BAD_CHARS.test(n);
+  }
+
   /* 回傳站名陣列（已略過不合格的單筆）；整檔不合格回傳 null */
   function usableNames(f,region){
     if(!f||typeof f!=='object'||f.region!==region) return null;
     if(!Array.isArray(f.names)||f.names.length>MAX_STOPS) return null;
-    return f.names.filter(n=>typeof n==='string'&&n!==''&&n.length<=MAX_NAME&&!BAD_CHARS.test(n));
+    return f.names.filter(isUsableName);
+  }
+
+  /* TDX 查回來的站名：不是陣列當成空陣列，合格的單筆留下、順序不變 */
+  function usableTdxNames(list){
+    return Array.isArray(list)?list.filter(isUsableName):[];
   }
 
   /* 最多列 100 筆，其餘算進 more */
@@ -42,16 +52,16 @@
     const fromTdx=(q,region,onWait)=>tdx.searchStops(q,{region,onWait});
     /* 即時搜尋：每次都真的查，成功才蓋掉快取；失敗保留原本的快取 */
     function searchTdxLive(q,region,onWait){
-      return fromTdx(q,region,onWait).then(list=>{
-        tdxCache.set(tdxKey(q,region),Promise.resolve(list));
-        return capped(list,'tdx');
+      return fromTdx(q,region,onWait).then(usableTdxNames).then(names=>{
+        tdxCache.set(tdxKey(q,region),Promise.resolve(names));
+        return capped(names,'tdx');
       });
     }
     /* 備案搜尋：同一個生活圈＋關鍵字只查一次；失敗的查詢不留在快取 */
     function searchTdxCached(q,region,onWait){
       const ck=tdxKey(q,region);
       if(!tdxCache.has(ck)){
-        const p=fromTdx(q,region,onWait);
+        const p=fromTdx(q,region,onWait).then(usableTdxNames);
         tdxCache.set(ck,p);
         p.catch(()=>{ if(tdxCache.get(ck)===p) tdxCache.delete(ck); });
       }
