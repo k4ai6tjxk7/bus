@@ -16,9 +16,15 @@
 (function(root){
   const SOON=180, ARRIVING=60, STALE_MS=3*60000;
 
+  /* StopStatus 只看 0～4 的整數；其他（字串含 "0"、物件、陣列、NaN、小數、範圍外、沒有欄位、null）一律是 null＝未知狀態。
+     排序、文字、小字、有預估秒數共用這一處判斷 */
+  const stopStatusOf=d=>{const s=d&&d.StopStatus;return Number.isInteger(s)&&s>=0&&s<=4?s:null};
+  /* 未知狀態的排序值：正常狀態最大是 2e6+4，這個值排在它們之後、沒有到站資料（9e9）之前 */
+  const UNKNOWN_RANK=2e6+5;
+
   /* 有預估秒數的班次：即時預估（StopStatus 0）或首站預估（StopStatus 1 且有秒數），兩者一律當成正常班次。
-     秒數必須是有限數字；字串（就算是 "120"）、物件、陣列、NaN、Infinity 都當成沒有預估。判斷只寫在這一處 */
-  const timed=d=>!!d&&(d.StopStatus===0||d.StopStatus===1)&&typeof d.EstimateTime==='number'&&Number.isFinite(d.EstimateTime);
+     秒數必須是有限數字；字串（就算是 "120"）、物件、陣列、NaN、Infinity 都當成沒有預估 */
+  const timed=d=>!!d&&(stopStatusOf(d)===0||stopStatusOf(d)===1)&&typeof d.EstimateTime==='number'&&Number.isFinite(d.EstimateTime);
 
   /* 發車時刻：解析成毫秒；不是字串或解析不出日期就回傳 null，當成沒有發車時刻（排序、文字、小字共用） */
   function depMs(d){
@@ -31,8 +37,9 @@
   function rank(d){
     if(!d) return 9e9;
     if(timed(d)) return d.EstimateTime;
-    if(d.StopStatus===1){const t=depMs(d);return 1e6+(t!==null?t/1e3%1e6:5e5);}
-    return 2e6+(d.StopStatus||0);
+    const s=stopStatusOf(d);
+    if(s===1){const t=depMs(d);return 1e6+(t!==null?t/1e3%1e6:5e5);}
+    return s===null?UNKNOWN_RANK:2e6+s;
   }
   const hhmm=t=>{const x=new Date(t);return String(x.getHours()).padStart(2,'0')+':'+String(x.getMinutes()).padStart(2,'0')};
 
@@ -44,12 +51,12 @@
       if(s<SOON) return {kind:'word',text:'將到站',tone:'hot'};
       return {kind:'min',n:Math.floor(s/60),tone:''};
     }
-    if(d.StopStatus===1){const t=depMs(d);return t!==null?{kind:'word',text:hhmm(t),tone:''}:{kind:'word',text:'未發車',tone:'dim'};}
-    return {kind:'word',text:({2:'交管不停',3:'末班已過',4:'今日停駛'}[d.StopStatus]||'無資料'),tone:'dim'};
+    if(stopStatusOf(d)===1){const t=depMs(d);return t!==null?{kind:'word',text:hhmm(t),tone:''}:{kind:'word',text:'未發車',tone:'dim'};}
+    return {kind:'word',text:({2:'交管不停',3:'末班已過',4:'今日停駛'}[stopStatusOf(d)]||'無資料'),tone:'dim'};
   }
   function subOf(r,d,to){
     const s='坐 '+r.hops+' 站到'+to;
-    if(!d||d.StopStatus!==1) return s;
+    if(!d||stopStatusOf(d)!==1) return s;
     /* 首站預估：車還沒發車，時間可能不準，小字要說清楚 */
     const t=depMs(d);
     if(timed(d)) return (t!==null?'首站 '+hhmm(t)+' 發車':'首站未發車')+' · '+s;
